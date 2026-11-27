@@ -1,4 +1,4 @@
-// Phlox v1.2.1 — shared flame math: variations, transforms, presets, and the voice DSP.
+// Phlox v1.3.0 — shared flame math: variations, transforms, presets, and the voice DSP.
 // Imported by the AudioWorklet, the render worker, the UI and the Node tests.
 //
 // The idea: iterating an affine map z ← A z + b at audio rate is a two-pole resonator
@@ -261,6 +261,83 @@ export const PRESETS = {
     X({ rot: 110, sx: 0.6, sy: 0.6, tx: -0.3, ty: -0.2, col: 0.5 }),
     X({ rot: -120, sx: 0.4, sy: 0.4, tx: 0.4, ty: -0.4, col: 0.9, w: 0.5 }),
   ] },
+
+  // ---------- STRING: the orbit outline is the pluck shape; each transform a dispersion stage ----------
+  harp: { name: 'Sierpiński harp', engine: 'string', p: { throat: 700, ring: 0.55, body: 0.6, breath: 0.05, address: 0, bloom: 0.3, release: 0.5 }, xf: [
+    X({ rot: 12, sx: 0.5, sy: 0.5, tx: -0.5, ty: -0.35, col: 0.05 }),
+    X({ rot: -9, sx: 0.5, sy: 0.5, tx: 0.5, ty: -0.35, col: 0.5 }),
+    X({ rot: 4, sx: 0.5, sy: 0.5, tx: 0, ty: 0.5, col: 0.95 }),
+  ] },
+  koto: { name: 'Fern koto', engine: 'string', p: { throat: 1600, ring: 0.42, body: 0.8, breath: 0.2, address: 1, bloom: 0.55, release: 0.35, glide: 0.02 }, xf: [
+    X({ rot: -2.5, sx: 0.85, sy: 0.85, tx: 0, ty: 0.48, w: 0.7, col: 0.35 }),
+    X({ rot: 49, sx: 0.3, sy: 0.27, tx: 0, ty: 0.48, w: 0.15, col: 0.7 }),
+    X({ rot: 120, sx: 0.3, sy: -0.28, tx: 0, ty: 0.132, w: 0.15, col: 0.95 }),
+  ] },
+  piano: { name: 'Dragon piano', engine: 'string', p: { throat: 3400, ring: 0.6, body: 0.5, breath: 0.05, address: 2, bloom: 0.45, release: 0.3 }, xf: [
+    X({ rot: 45, sx: 0.7071, sy: 0.7071, tx: -0.5, ty: 0, col: 0.15 }),
+    X({ rot: 135, sx: 0.7071, sy: 0.7071, tx: 0.5, ty: 0, col: 0.85 }),
+  ] },
+  cello: { name: 'Golden cello', engine: 'string', p: { throat: 900, ring: 0.7, body: 0.45, breath: 0.12, address: 3, bloom: 0.25, attack: 0.12, release: 0.5, vibDepth: 12, vibDelay: 0.4 }, xf: [
+    X({ rot: 137.508, sx: 0.82, sy: 0.82, tx: 0.3, ty: 0, col: 0.2, w: 1.3 }),
+    X({ rot: -137.508, sx: 0.55, sy: 0.55, tx: -0.55, ty: 0.3, col: 0.6 }),
+    X({ rot: 68.75, sx: 0.4, sy: 0.4, tx: 0.1, ty: -0.6, col: 0.95, w: 0.7 }),
+  ] },
+  ebow: { name: 'Julia e-bow', engine: 'string', p: { throat: 2200, ring: 0.8, body: 0.7, breath: 0.1, address: 4, bloom: 0.7, attack: 0.3, release: 0.8 }, xf: [
+    X({ rot: 20, sx: 0.8, sy: 0.8, tx: 0.3, ty: 0.2, col: 0.15, lin: 0, v1: 'julia', a1: 1 }),
+    X({ rot: 100, sx: 0.5, sy: 0.6, tx: -0.4, ty: -0.2, col: 0.7, lin: 0.7, v1: 'sinusoidal', a1: 0.3 }),
+  ] },
+
+  // ---------- PULSE: a step clock drives the chaos game; each transform a tuned drum ----------
+  tabla: { name: 'Sierpiński tabla', engine: 'pulse', p: { throat: 1900, ring: 0.4, body: 0.55, breath: 0.12, address: 0, bloom: 0.15 }, xf: [
+    X({ rot: 12, sx: 0.5, sy: 0.5, tx: -0.5, ty: -0.35, col: 0.05 }),
+    X({ rot: -60, sx: 0.5, sy: 0.5, tx: 0.5, ty: -0.35, col: 0.5 }),
+    X({ rot: 150, sx: 0.45, sy: 0.45, tx: 0, ty: 0.5, col: 0.95 }),
+  ] },
+  euclid: { name: 'Euclid fern', engine: 'pulse', p: { throat: 2400, ring: 0.3, body: 0.45, breath: 0.45, address: 1, bloom: 0.05 }, xf: [
+    X({ rot: -2.5, sx: 0.85, sy: 0.85, tx: 0, ty: 0.48, w: 0.5, col: 0.35 }),
+    X({ rot: 49, sx: 0.3, sy: 0.27, tx: 0, ty: 0.48, w: 0.3, col: 0.7 }),
+    X({ rot: 120, sx: 0.3, sy: -0.28, tx: 0, ty: 0.132, w: 0.2, col: 0.95 }),
+  ] },
+  machine: { name: 'Dragon machine', engine: 'pulse', p: { throat: 2480, ring: 0.25, body: 0.85, breath: 0.5, address: 2, bloom: 0 }, xf: [
+    X({ rot: 8, sx: 0.7071, sy: 0.7071, tx: -0.5, ty: -0.3, col: 0.15 }),
+    X({ rot: 135, sx: 0.5, sy: 0.5, tx: 0.5, ty: 0.4, col: 0.85 }),
+  ] },
+  gamelanp: { name: 'Golden gamelan', engine: 'pulse', p: { throat: 2200, ring: 0.65, body: 0.05, breath: 0, address: 3, bloom: 0.2, release: 0.8 }, xf: [
+    X({ rot: 137.508, sx: 0.82, sy: 0.82, tx: 0.3, ty: 0, col: 0.2, w: 1.3 }),
+    X({ rot: -137.508, sx: 0.55, sy: 0.55, tx: -0.55, ty: 0.3, col: 0.6 }),
+    X({ rot: 68.75, sx: 0.4, sy: 0.4, tx: 0.1, ty: -0.6, col: 0.95, w: 0.7 }),
+  ] },
+  ratchet: { name: 'Swirl ratchet', engine: 'pulse', p: { throat: 2700, ring: 0.3, body: 0.7, breath: 0.35, address: 4, bloom: 0.35 }, xf: [
+    X({ rot: 30, sx: 0.6, sy: 0.6, tx: 0.4, ty: 0.2, col: 0.1, lin: 0.4, v1: 'swirl', a1: 0.6 }),
+    X({ rot: -70, sx: 0.55, sy: 0.65, tx: -0.45, ty: -0.1, col: 0.55, lin: 0.6, v1: 'swirl', a1: 0.4 }),
+    X({ rot: 160, sx: 0.3, sy: 0.3, tx: 0.05, ty: -0.5, col: 0.9, w: 0.6 }),
+  ] },
+
+  // ---------- SCAN: the flame picture read like a spectrogram ----------
+  scanorgan: { name: 'Sierpiński organ', engine: 'scan', p: { throat: 3200, ring: 0.25, body: 0.5, breath: 0.05, address: 0, detail: 24, attack: 0.08, release: 0.9 }, xf: [
+    X({ rot: 12, sx: 0.5, sy: 0.5, tx: -0.5, ty: -0.35, col: 0.05 }),
+    X({ rot: -9, sx: 0.5, sy: 0.5, tx: 0.5, ty: -0.35, col: 0.5 }),
+    X({ rot: 4, sx: 0.5, sy: 0.5, tx: 0, ty: 0.5, col: 0.95 }),
+  ] },
+  fernspec: { name: 'Fern spectrum', engine: 'scan', p: { throat: 4000, ring: 0.2, body: 0.75, breath: 0.15, address: 1, detail: 32, attack: 0.4, release: 1.8 }, xf: [
+    X({ rot: -2.5, sx: 0.85, sy: 0.85, tx: 0, ty: 0.48, w: 0.7, col: 0.35 }),
+    X({ rot: 49, sx: 0.3, sy: 0.27, tx: 0, ty: 0.48, w: 0.15, col: 0.7 }),
+    X({ rot: 120, sx: 0.3, sy: -0.28, tx: 0, ty: 0.132, w: 0.15, col: 0.95 }),
+  ] },
+  glass: { name: 'Dragon glass', engine: 'scan', p: { throat: 5200, ring: 0.45, body: 0.9, breath: 0.3, address: 2, detail: 32, attack: 0.02, decay: 1.2, sustain: 0.4, release: 1.5, vibDepth: 0 }, xf: [
+    X({ rot: 45, sx: 0.7071, sy: 0.7071, tx: -0.5, ty: 0, col: 0.15 }),
+    X({ rot: 135, sx: 0.7071, sy: 0.7071, tx: 0.5, ty: 0, col: 0.85 }),
+  ] },
+  chords: { name: 'Golden chords', engine: 'scan', p: { throat: 2600, ring: 0.15, body: 0.6, breath: 0.08, address: 3, detail: 16, attack: 0.6, release: 2.5, vibDepth: 0 }, xf: [
+    X({ rot: 137.508, sx: 0.82, sy: 0.82, tx: 0.3, ty: 0, col: 0.2, w: 1.3 }),
+    X({ rot: -137.508, sx: 0.55, sy: 0.55, tx: -0.55, ty: 0.3, col: 0.6 }),
+    X({ rot: 68.75, sx: 0.4, sy: 0.4, tx: 0.1, ty: -0.6, col: 0.95, w: 0.7 }),
+  ] },
+  hollow: { name: 'Heart hollow', engine: 'scan', p: { throat: 2000, ring: 0.35, body: 0.4, breath: 0.2, address: 4, detail: 40, attack: 0.9, release: 2.5, bloom: 0.5 }, xf: [
+    X({ rot: -15, sx: 0.55, sy: 0.55, tx: 0.2, ty: 0.3, col: 0.05, lin: 0.3, v1: 'heart', a1: 0.6 }),
+    X({ rot: 110, sx: 0.6, sy: 0.6, tx: -0.3, ty: -0.2, col: 0.5 }),
+    X({ rot: -120, sx: 0.4, sy: 0.4, tx: 0.4, ty: -0.4, col: 0.9, w: 0.5 }),
+  ] },
 };
 
 // ---------- voice DSP ----------
@@ -290,6 +367,13 @@ export function makeVoice(seed = 1) {
     ph: null, sub: 0, lx: 0, ly: 0,
     // cloud
     next: 0, cz: null, gc: null, gs: null, gwc: null, gws: null, gpos: null, glen: null, gl: null, gr: null, gnz: null, gon: null,
+    // string
+    sbx: null, sby: null, sz: null, sa: null, sD: null, sf: null, sw: 0, slvl: 0, sG: 1, sTf: 0, sPatch: null, exN: 0, exK: 0, exA: 0, exLvl: 0,
+    // pulse
+    hon: null, hph: null, hf: null, hdrop: null, hpos: null, ha: null, hdec: null, hnz: null, hlo: null, hbd: null, hl: null, hr: null,
+    pStep: 0, stepLen: 1, rN: 0, rK: 0, rEvery: 0, rAt: 0, rA: 0,
+    // scan
+    scFresh: false, exBuf: null, scC: null, scS: null, scWc: null, scWs: null, scAL: null, scAR: null, scDL: null, scDR: null, scJ: null, scPh: 0,
   };
 }
 function rand(v) { let s = v.rng; s ^= s << 13; s >>>= 0; s ^= s >> 17; s ^= s << 5; s >>>= 0; v.rng = s; return s / 4294967296; }

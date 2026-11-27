@@ -1,15 +1,19 @@
-// Phlox v1.2.1 — the four sound engines, all driven by the same flame.
+// Phlox v1.3.0 — the seven sound engines, all driven by the same flame (string, pulse, scan: engines-more.js).
 //   voice : formant voice (flame.js renderVoice) — each transform a vocal-tract resonance
 //   bell  : struck/bowed modal body — each transform an inharmonic partial ringing in parallel
 //   orbit : wavetable — the flame's periodic orbit under an address word, played band-limited
 //   cloud : granular — the chaos game spawns grains, pitched by height on the fractal
 import { applyXf, XF_STRIDE, renderVoice, preparePatch, makeVoice, Decimator, OS } from './flame.js';
+import { renderString, renderPulse, renderScan } from './engines-more.js';
 
 export const ENGINES = {
   voice: { name: 'Voice', os: true },
   bell: { name: 'Bell', os: false },
   orbit: { name: 'Orbit', os: false },
   cloud: { name: 'Cloud', os: false },
+  string: { name: 'String', os: false },
+  pulse: { name: 'Pulse', os: false },
+  scan: { name: 'Scan', os: false },
 };
 const TAU = Math.PI * 2;
 function rnd(v) { let s = v.rng; s ^= s << 13; s >>>= 0; s ^= s >> 17; s ^= s << 5; s >>>= 0; v.rng = s; return s / 4294967296; }
@@ -125,7 +129,7 @@ function makeWord(patch, mode, m, seed) {
   return word;
 }
 const TBL = 2048, MIPS = [1, 2, 3, 4, 6, 8, 12, 16, 24, 32];
-function orbitData(patch, g) {
+export function orbitSpectrum(patch, g) {
   const m = Math.max(4, Math.min(64, g.detail | 0 || 32));
   const word = makeWord(patch, g.address | 0, m, 1234);
   const acc = [0, 0];
@@ -164,6 +168,11 @@ function orbitData(patch, g) {
     pow += pr[k] ** 2 + pi[k] ** 2 + nr[k] ** 2 + ni[k] ** 2;
   }
   const norm = pow > 1e-12 ? 0.2 / Math.sqrt(pow / 2) : 1;
+  let mx = 0, my = 0; for (let k = 0; k < m; k++) { mx += px[k]; my += py[k]; }
+  return { m, word, px, py, H, norm, pr, pi, nr, ni, mx: mx / m, my: my / m };
+}
+function orbitData(patch, g) {
+  const sp = orbitSpectrum(patch, g), { m, word, px, py, H, norm, pr, pi, nr, ni } = sp;
   // band-limited mip tables: level j holds harmonics 1..MIPS[j] (capped at H)
   const levels = MIPS.filter(K => K <= H);
   if (!levels.length || levels[levels.length - 1] !== H) levels.push(H);
@@ -184,8 +193,7 @@ function orbitData(patch, g) {
     X[TBL] = X[0]; X[TBL + 1] = X[1]; X[TBL + 2] = X[2]; Y[TBL] = Y[0]; Y[TBL + 1] = Y[1]; Y[TBL + 2] = Y[2];
     tx.push(X); ty.push(Y);
   }
-  let mx = 0, my = 0; for (let k = 0; k < m; k++) { mx += px[k]; my += py[k]; }
-  return { m, word, px, py, H, norm, levels, tx, ty, mx: mx / m, my: my / m };
+  return { m, word, px, py, H, norm, levels, tx, ty, mx: sp.mx, my: sp.my };
 }
 function cubic(T, pos) { // Catmull–Rom on a wrapped table (T has 3 guard samples)
   const i = pos | 0, f = pos - i, i0 = i === 0 ? TBL - 1 : i - 1;
@@ -332,6 +340,9 @@ export function renderAny(v, patch, g, L, R, n, trail) {
     case 'bell': return renderBell(v, patch, g, L, R, n, trail);
     case 'orbit': return renderOrbit(v, patch, g, L, R, n, trail);
     case 'cloud': return renderCloud(v, patch, g, L, R, n, trail);
+    case 'string': return renderString(v, patch, g, L, R, n, trail);
+    case 'pulse': return renderPulse(v, patch, g, L, R, n, trail);
+    case 'scan': return renderScan(v, patch, g, L, R, n, trail);
     default: return renderVoice(v, patch, g, L, R, n, trail);
   }
 }
@@ -341,7 +352,8 @@ export function renderOffline(v, patch, g, seconds, os = OS) {
   const sr = g.sr, n = Math.floor(sr * seconds), B = 128, engine = g.engine || 'voice';
   const L = new Float32Array(n), R = new Float32Array(n);
   if (engine !== 'voice') {
-    for (let o = 0; o < n; o += B) renderAny(v, patch, g, L.subarray(o, Math.min(n, o + B)), R.subarray(o, Math.min(n, o + B)), Math.min(B, n - o));
+    const gc = Object.assign({}, g);
+    for (let o = 0; o < n; o += B) { gc.clock = o; renderAny(v, patch, gc, L.subarray(o, Math.min(n, o + B)), R.subarray(o, Math.min(n, o + B)), Math.min(B, n - o)); }
     return { L, R };
   }
   const gh = Object.assign({}, g, { sr: sr * os, os });
@@ -365,13 +377,16 @@ export function measurePatch(P, g, ring) {
   // measure as played: keep the engine's own attack (bowed bells and pads swell), then a window after it
   const atk = engine === 'voice' ? 0.001 : Math.min(1.5, g.attack);
   const gg = Object.assign({}, g, { attack: atk, sustain: 1, decay: 1, glide: 0, vibDepth: 0, bloom: engine === 'voice' ? 0 : g.bloom, breath: engine === 'voice' ? 0 : g.breath });
-  const bowed = engine === 'bell' && ((g.address | 0) === 3 || (g.address | 0) === 4); // bowed bodies build up to steady state
-  const win = bowed ? 2.5 : engine === 'bell' ? 0.35 : engine === 'cloud' ? 0.8 : 0.16;
+  const bowed = (engine === 'bell' || engine === 'string') && ((g.address | 0) === 3 || (g.address | 0) === 4); // bowed bodies build up to steady state
+  const win = bowed ? 2.5 : engine === 'bell' || engine === 'string' ? 0.35 : engine === 'cloud' ? 0.8 : engine === 'pulse' ? 1.6 : engine === 'scan' ? 0.5 : 0.16;
   const { L, R } = renderOffline(v, prep, gg, atk + win);
   const n = L.length, skip = engine === 'voice' ? Math.floor(n * 0.35) : Math.floor((atk + (bowed ? 1.5 : 0)) * g.sr);
   let e = 0;
   for (let i = skip; i < n; i++) e += L[i] * L[i] + R[i] * R[i];
   const rms = Math.sqrt(e / (2 * (n - skip)));
-  const target = engine === 'bell' ? 0.24 : 0.2;
-  return { cx: prep.cx, cy: prep.cy, rms, norm: rms > 1e-6 ? Math.min(40, target / rms) : 1 };
+  let peak = 0; for (let i = skip; i < n; i++) peak = Math.max(peak, Math.abs(L[i]), Math.abs(R[i]));
+  const target = engine === 'bell' || engine === 'string' ? 0.24 : engine === 'pulse' ? 0.17 : 0.2;
+  let norm = rms > 1e-6 ? Math.min(40, target / rms) : 1;
+  if (engine === 'pulse' && peak > 1e-6) norm = Math.min(norm, 0.85 / peak); // drums: set by their peaks, not their average
+  return { cx: prep.cx, cy: prep.cy, rms, norm };
 }

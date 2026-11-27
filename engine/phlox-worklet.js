@@ -1,4 +1,4 @@
-// Phlox v1.2.1 — polyphonic flame-voice AudioWorklet (four engines).
+// Phlox v1.3.0 — polyphonic flame-voice AudioWorklet (seven engines).
 // Voices run 4× (High) or 2× (Light) oversampled (192 kHz at 48 kHz) and the mix is decimated with a Kaiser FIR,
 // so the rings start without aliasing. A smooth peak limiter keeps chords from clipping.
 import { preparePatch, makeVoice, Decimator, OS } from './flame.js';
@@ -26,6 +26,7 @@ class PhloxProcessor extends AudioWorkletProcessor {
     this.trailLen = new Int32Array(MAXV);
     this.trailProxy = Array.from({ length: MAXV }, (_, k) => ({ push: (x, y) => { const n = this.trailLen[k]; if (n < 1198) { this.trailBuf[k][n] = x; this.trailBuf[k][n + 1] = y; this.trailLen[k] = n + 2; } } }));
     this.tick = 0;
+    this.clock = 0; // shared step clock (base-rate samples) so Pulse voices stay in time with each other
     this.port.onmessage = (e) => this.onMsg(e.data);
   }
 
@@ -92,9 +93,10 @@ class PhloxProcessor extends AudioWorkletProcessor {
     this.decL.process(hL, L); this.decR.process(hR, R);
     if (p && !voiceEngine) { // bell / orbit / cloud are band-limited by construction: base rate
       const gb = this.gBase || (this.gBase = {});
-      Object.assign(gb, this.g); gb.sr = sampleRate; gb.os = 1;
+      Object.assign(gb, this.g); gb.sr = sampleRate; gb.os = 1; gb.clock = this.clock;
       for (let k = 0; k < MAXV; k++) { const v = this.voices[k]; if (v.active) renderAny(v, p, gb, L, R, n, this.trailProxy[k]); }
     }
+    this.clock += n;
     const w = this.width, dr = this.drive, dk = 1 + dr * 6, dn = dr > 0 ? 1 / Math.tanh(dk) : 1;
     let lim = this.lim;
     for (let i = 0; i < n; i++) {

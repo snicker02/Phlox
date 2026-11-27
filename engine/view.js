@@ -1,4 +1,4 @@
-// Phlox v1.2.1 — WebGL1 display of the flame histogram.
+// Phlox v1.3.0 — WebGL1 display of the flame histogram.
 // Texture: RGB = average palette colour, A = √(log-density / 1.25) from the render worker.
 // Shader: gamma with a linear threshold (faint areas don't turn to noise), vibrancy,
 // density-estimation smoothing (sparse pixels average over a wider neighbourhood, like flam3's

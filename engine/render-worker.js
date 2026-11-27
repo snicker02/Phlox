@@ -1,4 +1,4 @@
-// Phlox v1.2.1 — progressive flame renderer (chaos game → supersampled log-density histogram),
+// Phlox v1.3.0 — progressive flame renderer (chaos game → supersampled log-density histogram),
 // off the main thread.
 //  · supersampling: the histogram is ss× the output in each axis and box-filtered down (anti-aliasing)
 //  · robust density normalisation: log-density relative to a high percentile of the occupied bins
