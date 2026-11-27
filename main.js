@@ -3,10 +3,10 @@ import { PRESETS, VARS, makeXf, matrixOf, setMatrix, compile, morphXfs, formantH
 import { measurePatch, ENGINES } from './engine/engines.js';
 import { FlameView, PALETTES, paletteLut, lutColor } from './engine/view.js';
 import { AudioEngine } from './engine/audio.js';
-import { Recorder, pickMime, download } from './engine/recorder.js';
+import { Recorder, pickMime, download, savePng, describeMime } from './engine/recorder.js';
 import { setupTabs } from './engine/tabs.js';
 
-const VERSION = '1.1.0';
+const VERSION = '1.2.0';
 const $ = (id) => document.getElementById(id);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const NOTE_NAMES = ['C', 'C♯', 'D', 'E♭', 'E', 'F', 'F♯', 'G', 'A♭', 'A', 'B♭', 'B'];
@@ -62,7 +62,25 @@ const DEFAULTS = {
   root: 9, oct: 3, scale: 'minor', snap: true, span: 19, hold: false, velocity: 0.85,
   drive: 0.1, reverb: 0.32, room: 3.2, volume: 0.8,
   palette: 'ember', gamma: 3.2, bright: 1.05, vib: 0.85, glow: 0.22, quality: 1, showTri: true, showOrbits: true, orbitGlow: 1,
-  recFormat: 'webm', mode: 'play', cam: null, audioQ: 0,
+  de: 0.35, high: 1, relief: 0, sym: 'none',
+  recFormat: 'webm', vidSize: 'view', vidFps: 60, vidRate: 16, vidDur: 0, vidOrbits: true,
+  mode: 'play', cam: null, audioQ: 0,
+};
+// export sizes (all even — H.264 needs even dimensions)
+const VID_SIZES = {
+  view: { name: 'Match the view' },
+  '720p': { name: '1280 × 720 (16:9)', w: 1280, h: 720 },
+  '1080p': { name: '1920 × 1080 (16:9)', w: 1920, h: 1080 },
+  '1440p': { name: '2560 × 1440 (16:9)', w: 2560, h: 1440 },
+  square: { name: '1080 × 1080 (square)', w: 1080, h: 1080 },
+  vertical: { name: '1080 × 1920 (9:16 vertical)', w: 1080, h: 1920 },
+  portrait45: { name: '1080 × 1350 (4:5)', w: 1080, h: 1350 },
+};
+const SYMS = {
+  none: { name: 'None', n: 1, mirror: false }, r2: { name: '2-fold', n: 2 }, r3: { name: '3-fold', n: 3 }, r4: { name: '4-fold', n: 4 },
+  r5: { name: '5-fold', n: 5 }, r6: { name: '6-fold', n: 6 }, r8: { name: '8-fold', n: 8 }, r12: { name: '12-fold', n: 12 },
+  d1: { name: 'Mirror', n: 1, mirror: true }, d3: { name: '3-fold + mirror', n: 3, mirror: true }, d4: { name: '4-fold + mirror', n: 4, mirror: true },
+  d6: { name: '6-fold + mirror', n: 6, mirror: true }, d8: { name: '8-fold + mirror', n: 8, mirror: true },
 };
 const SYNTH = ['throat', 'ring', 'detail', 'body', 'breath', 'address', 'bloom', 'attack', 'decay', 'sustain', 'release', 'glide', 'vibRate', 'vibDepth', 'vibDelay'];
 const PATCH_KEYS = new Set(['morph', 'morphTo']);
@@ -72,7 +90,7 @@ const FMT = {
   glide: v => (v * 1000).toFixed(0) + ' ms', velocity: v => v.toFixed(2), vibDepth: v => v.toFixed(0), vibRate: v => v.toFixed(2), vibDelay: v => v.toFixed(2),
   attack: v => v.toFixed(3), decay: v => v.toFixed(2), sustain: v => v.toFixed(2), release: v => v.toFixed(2), drive: v => v.toFixed(2),
   reverb: v => (v * 100).toFixed(0) + '%', room: v => v.toFixed(2), volume: v => v.toFixed(2), gamma: v => v.toFixed(2), bright: v => v.toFixed(2),
-  vib: v => v.toFixed(2), glow: v => v.toFixed(2), orbitGlow: v => v.toFixed(2),
+  vib: v => v.toFixed(2), glow: v => v.toFixed(2), orbitGlow: v => v.toFixed(2), de: v => v.toFixed(2), high: v => v.toFixed(2), relief: v => v.toFixed(2),
   x_w: v => v.toFixed(2), x_rot: v => v.toFixed(1) + '°', x_sx: v => v.toFixed(3), x_sy: v => v.toFixed(3), x_shear: v => v.toFixed(3),
   x_tx: v => v.toFixed(3), x_ty: v => v.toFixed(3), x_col: v => v.toFixed(2), x_lin: v => v.toFixed(2), x_a1: v => v.toFixed(2), x_a2: v => v.toFixed(2),
 };
@@ -90,6 +108,8 @@ function loadState(obj) {
   S.xf = S.xf.map(x => makeXf(x));
   if (!ENGINES[S.engine]) S.engine = 'voice';
   if (!PRESETS[S.morphTo]) S.morphTo = 'golden';
+  if (!VID_SIZES[S.vidSize]) S.vidSize = 'view';
+  if (!SYMS[S.sym]) S.sym = 'none';
   S.sel = clamp(S.sel | 0, 0, S.xf.length - 1);
 }
 const snapshot = () => ({ app: 'phlox', version: VERSION, state: S });
@@ -103,9 +123,10 @@ const octx = orbitCv.getContext('2d'), uctx = uiCv.getContext('2d');
 let view;
 try { view = new FlameView(glCanvas); } catch (e) { $('status').textContent = 'WebGL unavailable: ' + e.message; throw e; }
 const audio = new AudioEngine(VERSION);
-const recCanvas = document.createElement('canvas');
+const recCanvas = document.createElement('canvas'); // export composite: flame + orbits at the export size
 const rctx = recCanvas.getContext('2d');
-const recorder = new Recorder(audio, recCanvas);
+const recorder = new Recorder(audio);
+let exporting = false;   // canvases + renderer at full export resolution (recording or rendering a still)
 const worker = new Worker(new URL(`./engine/render-worker.js?v=${VERSION}`, import.meta.url), { type: 'module' });
 let lut = paletteLut(S.palette);
 let tabs = null;
@@ -115,9 +136,12 @@ let trails = [];
 
 worker.onmessage = (e) => {
   const d = e.data;
-  if (d.type === 'frame') { view.upload(d.W, d.H, d.data); frameInfo = d; }
+  if (d.type === 'frame') {
+    view.upload(d.W, d.H, d.data); frameInfo = { W: d.W, H: d.H, total: d.total, ss: d.ss, t: performance.now() };
+    worker.postMessage({ type: 'recycle', buf: d.data.buffer }, [d.data.buffer]); // hand the buffer back (no 8 MB allocation per frame)
+  }
   else if (d.type === 'bounds') {
-    const r = $('view').getBoundingClientRect(), w = Math.max(1, r.width), h = Math.max(1, r.height), m = Math.min(w, h);
+    const f = frameRect(), w = Math.max(1, f.w), h = Math.max(1, f.h), m = Math.min(w, h);
     const hx = (d.maxx - d.minx) / 2 || 1, hy = (d.maxy - d.miny) / 2 || 1;
     cam = { cx: (d.minx + d.maxx) / 2, cy: (d.miny + d.maxy) / 2, scale: Math.max(hx * m / w, hy * m / h) * 1.32 };
     S.cam = cam; worker.postMessage({ type: 'cam', cam }); save();
@@ -189,8 +213,25 @@ function allOff() { held.clear(); audio.post({ type: 'allOff' }); for (const b o
 const ptrs = new Map();
 let hover = null;
 function viewSize() { const r = uiCv.getBoundingClientRect(); return { w: r.width, h: r.height, l: r.left, t: r.top }; }
-function toWorld(px, py) { const { w, h } = viewSize(), s = Math.min(w, h) / (2 * cam.scale); return [cam.cx + (px - w / 2) / s, cam.cy - (py - h / 2) / s]; }
-function toScreen(x, y) { const { w, h } = viewSize(), s = Math.min(w, h) / (2 * cam.scale); return [w / 2 + (x - cam.cx) * s, h / 2 - (y - cam.cy) * s]; }
+/** Export size in pixels (even), or null when matching the view. */
+function exportSize() {
+  const v = VID_SIZES[S.vidSize];
+  if (v && v.w) return { w: v.w, h: v.h };
+  const f = frameRect(), dpr = Math.min(2, window.devicePixelRatio || 1);
+  return { w: Math.max(2, Math.round(f.w * dpr / 2) * 2), h: Math.max(2, Math.round(f.h * dpr / 2) * 2) };
+}
+/** The visible export frame inside the view (CSS px): the whole view, or letterboxed to the export shape. */
+function frameRect() {
+  const { w, h } = viewSize(), v = VID_SIZES[S.vidSize];
+  if (!v || !v.w) return { x: 0, y: 0, w, h };
+  const a = v.w / v.h;
+  let fw = w, fh = w / a;
+  if (fh > h) { fh = h; fw = h * a; }
+  return { x: (w - fw) / 2, y: (h - fh) / 2, w: fw, h: fh };
+}
+function camScale(c, f) { return Math.min(f.w, f.h) / (2 * (c || cam).scale); }
+function toWorld(px, py) { const f = frameRect(), s = camScale(cam, f); return [cam.cx + (px - f.x - f.w / 2) / s, cam.cy - (py - f.y - f.h / 2) / s]; }
+function toScreen(x, y) { const f = frameRect(), s = camScale(cam, f); return [f.x + f.w / 2 + (x - cam.cx) * s, f.y + f.h / 2 - (y - cam.cy) * s]; }
 function local(e) { const v = viewSize(); return [e.clientX - v.l, e.clientY - v.t]; }
 function kmodFromY(y) { const { h } = viewSize(); return 0.45 * Math.pow(3.6, 1 - clamp(y / h, 0, 1)); }
 function setCam(c) { cam = c; S.cam = c; worker.postMessage({ type: 'cam', cam }); save(); }
@@ -269,17 +310,17 @@ uiCv.addEventListener('pointermove', (e) => {
     }
     patchDirty = true; syncXf();
   } else if (p.kind === 'pan') {
-    const { w, h } = viewSize(), s = Math.min(w, h) / (2 * p.cam0.scale);
+    const s = camScale(p.cam0, frameRect());
     setCam({ cx: p.cam0.cx - (px - p.x0) / s, cy: p.cam0.cy + (py - p.y0) / s, scale: p.cam0.scale });
   } else if (p.kind === 'pinch' && ptrs.size === 2) {
     const [a, b] = [...ptrs.values()];
     if (!pinch0) pinch0 = { d: Math.hypot(a.x - b.x, a.y - b.y) || 1, mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2, cam: { ...cam } };
     const d = Math.hypot(a.x - b.x, a.y - b.y) || 1, mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
-    const { w, h } = viewSize();
-    const sc = clamp(pinch0.cam.scale * pinch0.d / d, 0.02, 50), s = Math.min(w, h) / (2 * sc);
-    const s0 = Math.min(w, h) / (2 * pinch0.cam.scale);
-    const wx = pinch0.cam.cx + (pinch0.mx - w / 2) / s0, wy = pinch0.cam.cy - (pinch0.my - h / 2) / s0;
-    setCam({ cx: wx - (mx - w / 2) / s, cy: wy + (my - h / 2) / s, scale: sc });
+    const f = frameRect(), fcx = f.x + f.w / 2, fcy = f.y + f.h / 2;
+    const sc = clamp(pinch0.cam.scale * pinch0.d / d, 0.02, 50), s = Math.min(f.w, f.h) / (2 * sc);
+    const s0 = Math.min(f.w, f.h) / (2 * pinch0.cam.scale);
+    const wx = pinch0.cam.cx + (pinch0.mx - fcx) / s0, wy = pinch0.cam.cy - (pinch0.my - fcy) / s0;
+    setCam({ cx: wx - (mx - fcx) / s, cy: wy + (my - fcy) / s, scale: sc });
   }
 });
 let pinch0 = null;
@@ -299,8 +340,8 @@ uiCv.addEventListener('wheel', (e) => {
   e.preventDefault();
   const [px, py] = local(e), [wx, wy] = toWorld(px, py);
   const sc = clamp(cam.scale * Math.exp(e.deltaY * 0.0015), 0.02, 50);
-  const { w, h } = viewSize(), s = Math.min(w, h) / (2 * sc);
-  setCam({ cx: wx - (px - w / 2) / s, cy: wy + (py - h / 2) / s, scale: sc });
+  const f = frameRect(), s = Math.min(f.w, f.h) / (2 * sc);
+  setCam({ cx: wx - (px - f.x - f.w / 2) / s, cy: wy + (py - f.y - f.h / 2) / s, scale: sc });
 }, { passive: false });
 
 // ---------- keyboard ----------
@@ -380,7 +421,8 @@ function syncUI() {
     if (el.id in S) { el.value = S[el.id]; setOut(el); }
   }
   applyEngineUI();
-  for (const id of ['morphTo', 'address', 'root', 'oct', 'scale', 'palette', 'quality', 'recFormat']) $(id).value = String(S[id]);
+  for (const id of ['morphTo', 'address', 'root', 'oct', 'scale', 'palette', 'quality', 'recFormat', 'vidSize', 'vidFps', 'vidRate', 'vidDur', 'sym']) $(id).value = String(S[id]);
+  $('vidOrbits').checked = !!S.vidOrbits;
   $('audioQ').value = String(audioOS());
   $('snap').checked = !!S.snap; $('showTri').checked = !!S.showTri; $('showOrbits').checked = !!S.showOrbits;
   $('holdBtn').classList.toggle('on', !!S.hold);
@@ -397,6 +439,8 @@ function onChange(id) {
   else if (id === 'root' || id === 'oct' || id === 'scale') buildPads();
   else if (id === 'palette') { lut = paletteLut(S.palette); worker.postMessage({ type: 'palette', lut }); buildChips(); drawPresetThumbs(); }
   else if (id === 'quality') resize(true);
+  else if (id === 'vidSize') { if (recorder.recording && recorder.active.kind !== 'wav') recStop(); resize(true); fitNext = true; worker.postMessage({ type: 'fit' }); }
+  else if (id === 'sym') { sendSym(); fitNext = true; worker.postMessage({ type: 'fit' }); }
   else if (id === 'audioQ') audio.post({ type: 'os', os: audioOS() });
   save();
 }
@@ -405,7 +449,9 @@ for (const el of document.querySelectorAll('#panel input[type=range]')) {
   el.addEventListener('input', () => { S[el.id] = +el.value; setOut(el); onChange(el.id); });
 }
 for (const id of ['address', 'root', 'oct', 'quality', 'audioQ']) $(id).addEventListener('change', () => { S[id] = +$(id).value; onChange(id); });
-for (const id of ['morphTo', 'scale', 'palette', 'recFormat']) $(id).addEventListener('change', () => { S[id] = $(id).value; onChange(id); });
+for (const id of ['morphTo', 'scale', 'palette', 'recFormat', 'vidSize', 'sym']) $(id).addEventListener('change', () => { S[id] = $(id).value; onChange(id); });
+for (const id of ['vidFps', 'vidRate', 'vidDur']) $(id).addEventListener('change', () => { S[id] = +$(id).value; onChange(id); });
+$('vidOrbits').addEventListener('change', (e) => { S.vidOrbits = e.target.checked; save(); });
 $('snap').addEventListener('change', (e) => { S.snap = e.target.checked; save(); });
 $('showTri').addEventListener('change', (e) => { S.showTri = e.target.checked; save(); });
 $('showOrbits').addEventListener('change', (e) => { S.showOrbits = e.target.checked; save(); });
@@ -522,21 +568,85 @@ $('holdBtn').addEventListener('click', () => { S.hold = !S.hold; $('holdBtn').cl
 $('offBtn').addEventListener('click', allOff);
 $('fitBtn').addEventListener('click', () => { fitNext = true; worker.postMessage({ type: 'fit' }); });
 
-// recording
-function recToggle() {
-  wake();
-  if (recorder.recording) { recorder.stop(); markRec(); return; }
-  try { recorder.start(S.recFormat); } catch (e) { $('recInfo').textContent = e.message; flash(e.message); }
+// ---------- export: video, stills, WAV ----------
+const vidName = () => `phlox-${(S.preset || 'custom').toLowerCase()}`;
+let recPreparing = false, recEndAt = 0;
+function setExporting(on) { exporting = on; resize(true); }
+/** wait until the renderer has delivered frames at the current size for at least `ms` (accumulation) */
+function waitForRender(ms) {
+  const t0 = performance.now();
+  return new Promise((res) => {
+    const chk = () => {
+      const ok = frameInfo.W === resize.tw && frameInfo.H === resize.th && frameInfo.t > t0;
+      if (ok && performance.now() - t0 >= ms) res(); else if (performance.now() - t0 > ms + 6000) res(); else setTimeout(chk, 40);
+    };
+    chk();
+  });
+}
+function composite() {
+  const W = recCanvas.width, H = recCanvas.height;
+  rctx.drawImage(glCanvas, 0, 0, W, H);
+  if (S.vidOrbits && S.showOrbits) rctx.drawImage(orbitCv, 0, 0, W, H);
+}
+async function recStart() {
+  if (S.recFormat === 'wav') {
+    try { recorder.start({ kind: 'wav', name: vidName() }); } catch (e) { $('recInfo').textContent = e.message; flash(e.message); }
+    recEndAt = S.vidDur > 0 ? performance.now() + S.vidDur * 1000 : 0;
+    markRec(); return;
+  }
+  if (!pickMime(S.recFormat)) { const m = S.recFormat === 'mp4' ? 'MP4 recording is not supported in this browser (needs Safari, or Chrome/Edge 126+). Use WebM or WAV.' : 'WebM recording is not supported in this browser — try MP4.'; $('recInfo').textContent = m; flash(m); return; }
+  recPreparing = true; markRec();
+  setExporting(true);
+  const e = exportSize();
+  recCanvas.width = e.w; recCanvas.height = e.h;
+  await waitForRender(600); // let the flame fill in at the export resolution before the first frame
+  composite();
+  try {
+    recorder.start({ kind: S.recFormat, canvas: recCanvas, fps: +S.vidFps, bitrate: S.vidRate * 1e6, name: `${vidName()}-${e.w}x${e.h}` });
+    recEndAt = S.vidDur > 0 ? performance.now() + S.vidDur * 1000 : 0;
+  } catch (err) { $('recInfo').textContent = err.message; flash(err.message); setExporting(false); }
+  recPreparing = false; markRec();
+}
+function recStop() {
+  if (!recorder.recording) return;
+  const kind = recorder.active.kind;
+  recorder.stop(); recEndAt = 0;
+  if (kind !== 'wav') setExporting(false);
   markRec();
 }
+function recToggle() {
+  wake();
+  if (recPreparing) return;
+  if (recorder.recording) recStop(); else recStart();
+}
 function markRec() {
-  for (const b of [$('recBtn'), $('recBtn2')]) b.classList.toggle('live', recorder.recording);
-  $('recBtn').textContent = recorder.recording ? '■ Stop' : '● Rec';
-  $('recBtn2').textContent = recorder.recording ? '■ Stop recording' : '● Start recording';
+  const live = recorder.recording || recPreparing;
+  for (const b of [$('recBtn'), $('recBtn2')]) b.classList.toggle('live', live);
+  $('recBtn').textContent = recPreparing ? '… Preparing' : recorder.recording ? '■ Stop' : '● Rec';
+  $('recBtn2').textContent = recPreparing ? '… Preparing' : recorder.recording ? '■ Stop recording' : '● Start recording';
+}
+async function saveStill() {
+  wake();
+  if (recorder.recording) { composite(); savePng(recCanvas, vidName()); return; }
+  const btn = $('stillBtn'); btn.disabled = true; flash('Rendering the still at full resolution…');
+  setExporting(true);
+  const e = exportSize(); recCanvas.width = e.w; recCanvas.height = e.h;
+  await waitForRender(1800);
+  view.draw(drawOpts()); drawOrbits(true);
+  composite();
+  try { await savePng(recCanvas, `${vidName()}-${e.w}x${e.h}`); flash(`Saved ${e.w}×${e.h} PNG`); } catch (err) { flash(err.message); }
+  setExporting(false); btn.disabled = false;
 }
 $('recBtn').addEventListener('click', recToggle);
 $('recBtn2').addEventListener('click', recToggle);
-$('recInfo').textContent = `WebM: ${pickMime('webm') ? 'supported' : 'not supported here'} · MP4: ${pickMime('mp4') ? 'supported' : 'not supported here (Safari / Chrome 126+)'} · WAV: always.`;
+$('stillBtn').addEventListener('click', saveStill);
+recorder.onSaved = () => flash('Recording saved');
+{
+  const w = describeMime('webm'), m = describeMime('mp4');
+  $('recInfo').textContent = `This browser records WebM as ${w || '— (not supported)'} · MP4 as ${m || '— (not supported; needs Safari, or Chrome/Edge 126+)'}${m && /Opus/.test(m) ? ' — some players (QuickTime, iOS Photos) need AAC; use WebM or convert if one refuses it' : ''} · WAV always.`;
+}
+$('vidSize').innerHTML = Object.entries(VID_SIZES).map(([k, v]) => `<option value="${k}">${v.name}</option>`).join('');
+$('sym').innerHTML = Object.entries(SYMS).map(([k, v]) => `<option value="${k}">${v.name}</option>`).join('');
 
 // patches
 $('savePatch').addEventListener('click', () => download(new Blob([JSON.stringify(snapshot(), null, 1)], { type: 'application/json' }), `phlox-patch-${S.preset || 'custom'}.json`));
@@ -547,10 +657,29 @@ $('patchFile').addEventListener('change', async (e) => {
   catch (err) { flash('Could not load patch: ' + err.message); }
   e.target.value = '';
 });
-$('resetAll').addEventListener('click', () => { loadState(null); afterLoad(); });
+let resetArmT = 0;
+function resetClick(btn) {
+  if (!btn.classList.contains('armed')) {
+    for (const b of [$('resetTop'), $('resetAll')]) { b.classList.add('armed'); b.dataset.label = b.dataset.label || b.textContent; b.textContent = 'Tap again to reset'; }
+    clearTimeout(resetArmT);
+    resetArmT = setTimeout(disarmReset, 3000);
+    return;
+  }
+  disarmReset();
+  if (recorder.recording || recPreparing) recStop();
+  allOff();
+  loadState(null);
+  fitNext = true;
+  afterLoad();
+  flash('Everything reset to defaults');
+}
+function disarmReset() { clearTimeout(resetArmT); for (const b of [$('resetTop'), $('resetAll')]) { b.classList.remove('armed'); if (b.dataset.label) b.textContent = b.dataset.label; } }
+$('resetTop').addEventListener('click', () => resetClick($('resetTop')));
+$('resetAll').addEventListener('click', () => resetClick($('resetAll')));
 function afterLoad() {
   allOff(); lut = paletteLut(S.palette); worker.postMessage({ type: 'palette', lut });
-  cam = S.cam || cam; fitNext = !S.cam; if (S.cam) worker.postMessage({ type: 'cam', cam });
+  cam = S.cam || cam; fitNext = fitNext || !S.cam; if (S.cam) worker.postMessage({ type: 'cam', cam });
+  sendSym(); resize(true);
   syncUI(); buildPads(); sendSynth(); audio.post({ type: 'os', os: audioOS() }); audio.post({ type: 'params', width: S.width, drive: S.drive }); audio.setMix(S.reverb, S.volume); audio.setRoom(S.room);
   drawPresetThumbs(); measured = null; patchDirty = true; save();
 }
@@ -583,22 +712,34 @@ function onMidi(ev) {
 // ---------- layout ----------
 tabs = setupTabs({ panel: $('panel'), bar: $('tabbar'), key: 'phlox.tab' });
 function resize(force) {
-  const r = $('view').getBoundingClientRect();
+  const f = frameRect(), v = viewSize();
   const dpr = Math.min(2, window.devicePixelRatio || 1);
-  const w = Math.max(2, Math.round(r.width * dpr)), h = Math.max(2, Math.round(r.height * dpr));
-  view.resize(w, h);
-  for (const c of [orbitCv, uiCv]) if (c.width !== w || c.height !== h) { c.width = w; c.height = h; }
-  recCanvas.width = w; recCanvas.height = h;
-  const q = [0.45, 0.7, 1][S.quality] ?? 0.7;
-  const tw = Math.max(64, Math.min(1600, Math.round(r.width * dpr * q))), th = Math.max(64, Math.min(1600, Math.round(r.height * dpr * q)));
-  if (force || tw !== resize.tw || th !== resize.th) {
-    resize.tw = tw; resize.th = th;
-    worker.postMessage({ type: 'size', W: tw, H: th });
-    worker.postMessage({ type: 'quality', pts: [120000, 260000, 520000][S.quality] ?? 260000 });
+  // the flame + orbit canvases cover exactly the export frame; the UI canvas covers the whole view
+  for (const c of [glCanvas, orbitCv]) {
+    c.style.left = f.x + 'px'; c.style.top = f.y + 'px'; c.style.width = f.w + 'px'; c.style.height = f.h + 'px';
+    c.style.right = 'auto'; c.style.bottom = 'auto';
+  }
+  $('view').classList.toggle('framed', S.vidSize !== 'view');
+  const uw = Math.max(2, Math.round(v.w * dpr)), uh = Math.max(2, Math.round(v.h * dpr));
+  if (uiCv.width !== uw || uiCv.height !== uh) { uiCv.width = uw; uiCv.height = uh; }
+  let bw, bh;
+  if (exporting) { const e = exportSize(); bw = e.w; bh = e.h; }
+  else { bw = Math.max(2, Math.round(f.w * dpr)); bh = Math.max(2, Math.round(f.h * dpr)); }
+  view.resize(bw, bh);
+  if (orbitCv.width !== bw || orbitCv.height !== bh) { orbitCv.width = bw; orbitCv.height = bh; }
+  const q = exporting ? 1 : ([0.45, 0.7, 1][S.quality] ?? 0.7);
+  const ss = exporting ? 2 : ([1, 2, 2][S.quality] ?? 2);
+  const cap = exporting ? 4096 : 1600;
+  const tw = Math.max(64, Math.min(cap, Math.round(bw * q))), th = Math.max(64, Math.min(cap, Math.round(bh * q)));
+  if (force || tw !== resize.tw || th !== resize.th || ss !== resize.ss) {
+    resize.tw = tw; resize.th = th; resize.ss = ss;
+    worker.postMessage({ type: 'size', W: tw, H: th, ss });
+    worker.postMessage({ type: 'quality', pts: exporting ? 900000 : ([120000, 260000, 520000][S.quality] ?? 260000), fps: exporting ? Math.min(60, +S.vidFps) : 30 });
     worker.postMessage({ type: 'cam', cam });
     patchDirty = true;
   }
 }
+function sendSym() { const y = SYMS[S.sym] || SYMS.none; worker.postMessage({ type: 'sym', sym: { n: y.n, mirror: !!y.mirror } }); }
 new ResizeObserver(() => resize()).observe($('view'));
 
 const coarse = window.matchMedia('(pointer: coarse)');
@@ -618,7 +759,9 @@ $('startBtn').addEventListener('click', () => wake());
 
 // ---------- overlays ----------
 function drawOrbits() {
-  const c = octx, W = orbitCv.width, H = orbitCv.height, dpr = W / Math.max(1, viewSize().w);
+  const c = octx, W = orbitCv.width, H = orbitCv.height, f = frameRect(), dpr = W / Math.max(1, f.w);
+  // world → orbit-canvas pixels
+  const toScreen = (x, y) => { const s = camScale(cam, f); return [f.w / 2 + (x - cam.cx) * s, f.h / 2 - (y - cam.cy) * s]; };
   c.globalCompositeOperation = 'destination-out';
   c.fillStyle = 'rgba(0,0,0,0.28)'; c.fillRect(0, 0, W, H);
   c.globalCompositeOperation = 'lighter';
@@ -693,19 +836,24 @@ function drawUI() {
   c.restore();
 }
 
+function drawOpts() { return { gamma: S.gamma, bright: S.bright, vib: S.vib, glow: S.glow, de: S.de, high: S.high, relief: S.relief, thresh: 0.015, bg: [0.024, 0.016, 0.04] }; }
+
 // ---------- frame loop ----------
 let frameN = 0;
 function frame(now) {
   if (S.wander > 0) patchDirty = patchDirty || now - lastPatchT > 33;
   if (patchDirty) { patchDirty = false; pushPatch(now, !measured); }
-  const bg = [0.024, 0.016, 0.04];
-  view.draw({ gamma: S.gamma, bright: S.bright, vib: S.vib, glow: S.glow, bg });
+  view.draw(drawOpts());
   drawOrbits();
   drawUI();
-  if (recorder.recording) { rctx.drawImage(glCanvas, 0, 0); rctx.drawImage(orbitCv, 0, 0); }
+  if (recorder.recording && recorder.active.kind !== 'wav') composite();
+  if (recorder.recording && recEndAt && now >= recEndAt) recStop();
   if (++frameN % 6 === 0) {
     let st = `${ENGINES[S.engine].name} · ${S.preset ? PRESETS[S.preset].name : 'Custom flame'}${S.morph > 0 ? ' → ' + PRESETS[S.morphTo].name + ' ' + (S.morph * 100).toFixed(0) + '%' : ''} · ${S.xf.length} transforms · ${held.size} held · ${NOTE_NAMES[+S.root]} ${SCALES[S.scale].name.toLowerCase()}`;
-    if (recorder.recording) st = `● REC ${((now - recorder.t0) / 1000).toFixed(1)} s · ` + st;
+    if (recorder.recording) {
+      const el = (now - recorder.t0) / 1000, k = recorder.active.kind;
+      st = `● REC ${k.toUpperCase()}${k !== 'wav' ? ' ' + recCanvas.width + '×' + recCanvas.height + ' ' + S.vidFps + 'fps' : ''} · ${el.toFixed(1)} s${recEndAt ? ' / ' + S.vidDur + ' s' : ''} · ` + st;
+    } else if (recPreparing) st = 'Preparing the recording at export resolution… · ' + st;
     if (flashMsg && now - flashT < 4000) st = flashMsg;
     $('status').textContent = st;
   }
@@ -714,6 +862,7 @@ function frame(now) {
 
 // ---------- boot ----------
 worker.postMessage({ type: 'palette', lut });
+sendSym();
 resize(true);
 syncUI();
 buildPads();
@@ -731,4 +880,4 @@ audio.init().then(() => {
 }).catch((e) => flash('Audio unavailable: ' + e.message));
 ['pointerdown', 'keydown'].forEach(ev => window.addEventListener(ev, () => { if (audio.ready && !audio.running) wake(); }, { capture: true }));
 requestAnimationFrame(frame);
-window.__phlox = { get S() { return S; }, audio, noteOn, noteOff, allOff, get trails() { return trails; }, get frameInfo() { return frameInfo; }, setMode };
+window.__phlox = { get S() { return S; }, audio, noteOn, noteOff, allOff, get trails() { return trails; }, get frameInfo() { return frameInfo; }, setMode, frameRect, exportSize, get exporting() { return exporting; }, get recording() { return recorder.recording; }, recStart, recStop, saveStill, onChange };

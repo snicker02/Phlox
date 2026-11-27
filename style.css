@@ -1,4 +1,4 @@
-/* Phlox v1.1.0 */
+/* Phlox v1.2.0 */
 :root {
   --bg: #07050a; --panel: #110d14; --panel2: #1b1520; --line: #2e2836; --text: #e9e1d4; --dim: #9b91a3;
   --accent: #ff7a2a; --accent2: #ffc56a; --cool: #6f8cff; --rec: #ff4d5e;
@@ -110,3 +110,11 @@ body.tabbed #hud #hint { display: none; }
   body.tabbed #tabbar { border-top: none; border-left: 1px solid var(--line); }
   body.tabbed #panel { border-left: 1px solid var(--line); }
 }
+
+/* credit line at the bottom of the panel (outside the tab sections, so it shows on every tab) */
+.credit { color: var(--dim); font-size: 11px; text-align: center; padding: 14px 0 4px; opacity: .8; }
+
+/* v1.2.0 — export frame guide + reset button */
+#view.framed { background: #020103; }
+#view.framed #gl { box-shadow: 0 0 0 1px rgba(255, 197, 106, .35), 0 0 30px rgba(0, 0, 0, .6); }
+button.reset.armed, #resetAll.armed { background: #5a1616; border-color: #ff6b6b; color: #ffd2d2; }

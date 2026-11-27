@@ -1,7 +1,9 @@
-// Phlox — recording: video (WebM or MP4 via MediaRecorder) and lossless WAV via the tap worklet.
+// Phlox v1.2.0 — recording: video (WebM or MP4 via MediaRecorder) from a dedicated export canvas
+// at the chosen resolution, lossless WAV via the tap worklet, and PNG stills.
+import { fixWebmDuration } from './webm-duration.js';
 
 const WEBM = ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm'];
-const MP4 = ['video/mp4;codecs=avc1.42E01E,mp4a.40.2', 'video/mp4;codecs=avc1,mp4a.40.2', 'video/mp4;codecs=avc1.640028,opus', 'video/mp4;codecs=avc1,opus', 'video/mp4'];
+const MP4 = ['video/mp4;codecs=avc1.640028,mp4a.40.2', 'video/mp4;codecs=avc1.4d0028,mp4a.40.2', 'video/mp4;codecs=avc1.42E01E,mp4a.40.2', 'video/mp4;codecs=avc1,mp4a.40.2', 'video/mp4;codecs=avc1,opus', 'video/mp4'];
 
 export function pickMime(kind) {
   if (typeof MediaRecorder === 'undefined') return null;
@@ -17,38 +19,45 @@ export function download(blob, name) {
   setTimeout(() => URL.revokeObjectURL(a.href), 4000);
 }
 
-const stamp = () => { const d = new Date(), p = n => String(n).padStart(2, '0'); return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`; };
+export const stamp = () => { const d = new Date(), p = n => String(n).padStart(2, '0'); return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`; };
 
 export class Recorder {
-  constructor(audio, canvas) { this.audio = audio; this.canvas = canvas; this.active = null; this.t0 = 0; }
+  constructor(audio) { this.audio = audio; this.active = null; this.t0 = 0; this.frames = 0; }
 
   get recording() { return !!this.active; }
 
-  start(kind) {
+  /** opts: { kind: 'webm'|'mp4'|'wav', canvas, fps, bitrate (bits/s), name } */
+  start(opts) {
     if (this.active) return;
-    if (kind === 'wav') return this.startWav();
-    const mime = pickMime(kind);
-    if (!mime) throw new Error(kind === 'mp4' ? 'MP4 recording is not supported in this browser (needs Safari or Chrome 126+). Use WebM or WAV.' : 'WebM recording is not supported in this browser — try MP4 or WAV.');
-    const v = this.canvas.captureStream(60);
+    if (opts.kind === 'wav') return this.startWav(opts.name);
+    const mime = pickMime(opts.kind);
+    if (!mime) throw new Error(opts.kind === 'mp4' ? 'MP4 recording is not supported in this browser (needs Safari, or Chrome/Edge 126+). Use WebM or WAV.' : 'WebM recording is not supported in this browser — try MP4 or WAV.');
+    const fps = opts.fps || 60;
+    const v = opts.canvas.captureStream(fps);
     const stream = new MediaStream([...v.getVideoTracks(), ...this.audio.streamDest.stream.getAudioTracks()]);
     const chunks = [];
-    const rec = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 8e6, audioBitsPerSecond: 192000 });
+    const rec = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: opts.bitrate || 16e6, audioBitsPerSecond: 256000 });
     rec.ondataavailable = (e) => { if (e.data && e.data.size) chunks.push(e.data); };
-    rec.onstop = () => {
+    const ext = opts.kind === 'mp4' ? 'mp4' : 'webm';
+    rec.onstop = async () => {
       v.getTracks().forEach(t => t.stop());
-      download(new Blob(chunks, { type: mime.split(';')[0] }), `phlox-${stamp()}.${kind === 'mp4' ? 'mp4' : 'webm'}`);
+      let blob = new Blob(chunks, { type: mime.split(';')[0] });
+      // Chrome writes WebM without a duration (no length shown, poor seeking): patch it in
+      if (ext === 'webm') blob = await fixWebmDuration(blob, performance.now() - this.t0);
+      download(blob, `${opts.name || 'phlox'}-${stamp()}.${ext}`);
+      if (this.onSaved) this.onSaved();
     };
-    rec.start(250);
-    this.active = { kind, stop: () => rec.stop() };
-    this.t0 = performance.now();
+    rec.start(500);
+    this.active = { kind: opts.kind, stop: () => rec.stop(), mime };
+    this.t0 = performance.now(); this.frames = 0;
   }
 
-  startWav() {
+  startWav(name) {
     const port = this.audio.tap.port, L = [], R = [];
     const sr = this.audio.ctx.sampleRate;
     port.onmessage = (e) => {
       if (e.data.type === 'chunk') { L.push(e.data.l); R.push(e.data.r); }
-      if (e.data.type === 'done') { port.onmessage = null; download(encodeWav(L, R, sr), `phlox-${stamp()}.wav`); }
+      if (e.data.type === 'done') { port.onmessage = null; download(encodeWav(L, R, sr), `${name || 'phlox'}-${stamp()}.wav`); if (this.onSaved) this.onSaved(); }
     };
     port.postMessage('start');
     this.active = { kind: 'wav', stop: () => port.postMessage('stop') };
@@ -56,6 +65,19 @@ export class Recorder {
   }
 
   stop() { if (!this.active) return; this.active.stop(); this.active = null; }
+}
+
+/** Human-readable codecs for a container, e.g. "H.264 + AAC". */
+export function describeMime(kind) {
+  const m = pickMime(kind);
+  if (!m) return null;
+  const v = /avc1/.test(m) ? 'H.264' : /vp9/.test(m) ? 'VP9' : /vp8/.test(m) ? 'VP8' : 'video';
+  const a = /mp4a/.test(m) ? 'AAC' : /opus/.test(m) ? 'Opus' : kind === 'webm' ? 'Opus' : 'browser default audio';
+  return `${v} + ${a}`;
+}
+
+export function savePng(canvas, name) {
+  return new Promise((res, rej) => canvas.toBlob(b => { if (!b) return rej(new Error('image encode failed')); download(b, `${name || 'phlox'}-${stamp()}.png`); res(b); }, 'image/png'));
 }
 
 export function encodeWav(L, R, sr) {
