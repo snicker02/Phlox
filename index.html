@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>Phlox — the flame voice</title>
+<meta name="description" content="Phlox: an instrument played by a flame fractal — four engines (voice, bell, orbit wavetable, chaos-game cloud) driven by the same IFS transforms.">
+<meta name="theme-color" content="#07050a">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22%3E%3Cpath d=%22M16 2c3 7 9 9 9 17a9 9 0 0 1-18 0c0-5 3-7 4-11 1 3 3 4 3 4s-1-6 2-10z%22 fill=%22%23ff7a2a%22/%3E%3C/svg%3E">
+<link rel="stylesheet" href="style.css?v=1.1.0">
+</head>
+<body>
+<header id="top">
+  <div class="brand"><b>Phlox</b> <span class="ver">v1.1.0</span><span class="sub">the flame voice</span></div>
+  <div class="seg" id="modeSeg" role="group" aria-label="Mode">
+    <button data-mode="play" class="on" title="Play: the canvas is a playing surface (Tab)">Play</button>
+    <button data-mode="edit" title="Edit: drag the transform triangles (Tab)">Edit</button>
+  </div>
+  <div class="acts">
+    <button id="holdBtn" title="Hold notes after you let go">Hold</button>
+    <button id="offBtn" title="Release every note (Esc)">All off</button>
+    <button id="fitBtn" title="Fit the flame to the view">Fit</button>
+    <button id="recBtn" class="rec" title="Record with the format chosen in the Record tab">● Rec</button>
+  </div>
+</header>
+
+<main id="main">
+  <div id="view">
+    <canvas id="gl"></canvas>
+    <canvas id="orbits"></canvas>
+    <canvas id="ui"></canvas>
+    <div id="hud"><span id="status">Loading…</span><span id="hint"></span></div>
+    <div id="startOverlay" hidden><button id="startBtn">Tap to light the flame</button></div>
+  </div>
+  <nav id="tabbar" aria-label="Panels"></nav>
+
+  <aside id="panel">
+    <section class="sec" data-tab="voice">
+      <h2>Voice</h2>
+      <div class="seg wide" id="engineSeg" role="group" aria-label="Engine">
+        <button data-engine="voice" title="Formant voice: each transform is a resonance of the throat">Voice</button>
+        <button data-engine="bell" title="Struck / bowed body: each transform is an inharmonic partial">Bell</button>
+        <button data-engine="orbit" title="Wavetable: the flame's periodic orbit is the waveform">Orbit</button>
+        <button data-engine="cloud" title="Granular: the chaos game spawns grains, height = pitch">Cloud</button>
+      </div>
+      <p class="info" id="engineInfo"></p>
+      <div class="presetGrid" id="presetGrid"></div>
+      <label>Morph toward <select id="morphTo"></select></label>
+      <label>Morph <input type="range" id="morph" min="0" max="1" step="0.005"><output></output></label>
+      <label>Wander depth (°) <input type="range" id="wander" min="0" max="60" step="0.5"><output></output></label>
+      <label>Wander rate (Hz) <input type="range" id="wanderRate" min="0.01" max="2" step="0.01"><output></output></label>
+      <div class="btnrow"><button id="randomize">Randomize flame</button><button id="mutate">Mutate</button></div>
+
+    </section>
+
+    <section class="sec" data-tab="xforms">
+      <h2>Transforms</h2>
+      <div class="chips" id="chips"></div>
+      <div class="btnrow"><button id="xAdd">Add</button><button id="xDup">Duplicate</button><button id="xDel">Delete</button><button id="xRand">Randomize</button></div>
+      <p class="info" id="xInfo"></p>
+      <label>Time share (weight) <input type="range" id="x_w" min="0" max="3" step="0.01"><output></output></label>
+      <label>Rotation → formant <input type="range" id="x_rot" min="-180" max="180" step="0.5"><output></output></label>
+      <label>Scale X <input type="range" id="x_sx" min="-1.2" max="1.2" step="0.005"><output></output></label>
+      <label>Scale Y <input type="range" id="x_sy" min="-1.2" max="1.2" step="0.005"><output></output></label>
+      <label>Shear <input type="range" id="x_shear" min="-1" max="1" step="0.005"><output></output></label>
+      <label>Move X <input type="range" id="x_tx" min="-2" max="2" step="0.005"><output></output></label>
+      <label>Move Y <input type="range" id="x_ty" min="-2" max="2" step="0.005"><output></output></label>
+      <label>Colour <input type="range" id="x_col" min="0" max="1" step="0.005"><output></output></label>
+      <label>Linear <input type="range" id="x_lin" min="-1" max="1.5" step="0.01"><output></output></label>
+      <div class="row2">
+        <label>Variation <select id="x_v1"></select></label>
+        <label>Amount <input type="range" id="x_a1" min="-1" max="1.5" step="0.01"><output></output></label>
+      </div>
+      <div class="row2">
+        <label>Variation 2 <select id="x_v2"></select></label>
+        <label>Amount <input type="range" id="x_a2" min="-1" max="1.5" step="0.01"><output></output></label>
+      </div>
+    </section>
+
+    <section class="sec" data-tab="throat">
+      <h2 id="throatHead">Throat</h2>
+      <label><span id="lt_throat">Throat (formant range, Hz)</span> <input type="range" id="throat" min="300" max="6000" step="10"><output></output></label>
+      <label><span id="lt_ring">Ring (resonance)</span> <input type="range" id="ring" min="0" max="1" step="0.01"><output></output></label>
+      <label><span id="lt_body">Body (fixed-point pulse)</span> <input type="range" id="body" min="0" max="1" step="0.01"><output></output></label>
+      <label><span id="lt_breath">Breath</span> <input type="range" id="breath" min="0" max="1" step="0.005"><output></output></label>
+      <label><span id="lt_address">Address</span> <select id="address"></select></label>
+      <label><span id="lt_bloom">Bloom</span> <input type="range" id="bloom" min="0" max="1" step="0.01"><output></output></label>
+      <label id="detailRow"><span>Detail (orbit points per cycle)</span> <input type="range" id="detail" min="8" max="64" step="1"><output></output></label>
+      <label>Stereo width <input type="range" id="width" min="0" max="1.5" step="0.01"><output></output></label>
+    </section>
+
+    <section class="sec" data-tab="play">
+      <h2>Play</h2>
+      <div class="pads" id="pads"></div>
+      <div class="row2">
+        <label>Root <select id="root"></select></label>
+        <label>Octave <select id="oct"><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option></select></label>
+      </div>
+      <label>Scale <select id="scale"></select></label>
+      <label class="check"><input type="checkbox" id="snap"> Snap the play surface to the scale</label>
+      <label>Surface span (semitones) <input type="range" id="span" min="5" max="48" step="1"><output></output></label>
+      <label>Glide <input type="range" id="glide" min="0" max="0.5" step="0.005"><output></output></label>
+      <label>Velocity <input type="range" id="velocity" min="0.05" max="1.5" step="0.01"><output></output></label>
+      <label>Vibrato depth (cents) <input type="range" id="vibDepth" min="0" max="80" step="1"><output></output></label>
+      <label>Vibrato rate (Hz) <input type="range" id="vibRate" min="0.5" max="9" step="0.05"><output></output></label>
+      <label>Vibrato delay (s) <input type="range" id="vibDelay" min="0" max="2" step="0.01"><output></output></label>
+      <label>Attack (s) <input type="range" id="attack" min="0.002" max="2" step="0.001"><output></output></label>
+      <label>Decay (s) <input type="range" id="decay" min="0.01" max="3" step="0.01"><output></output></label>
+      <label>Sustain <input type="range" id="sustain" min="0" max="1" step="0.01"><output></output></label>
+      <label>Release (s) <input type="range" id="release" min="0.01" max="6" step="0.01"><output></output></label>
+      <div class="btnrow"><button id="midiBtn">Enable MIDI</button></div>
+      <p class="info" id="midiInfo"></p>
+      <p class="info hint-mouse">Play surface: left↔right is pitch, up↕down opens and closes the throat. Keys <kbd>Z</kbd>–<kbd>/</kbd> and <kbd>Q</kbd>–<kbd>P</kbd> are a piano (tracker layout), <kbd>[</kbd> <kbd>]</kbd> shift octave, <kbd>Tab</kbd> switches Play/Edit, <kbd>Esc</kbd> releases all.</p>
+      <p class="info hint-touch">Play surface: every finger is a voice — slide sideways for pitch, up and down to open the throat.</p>
+    </section>
+
+    <section class="sec" data-tab="sound">
+      <h2>Sound</h2>
+      <label>Drive <input type="range" id="drive" min="0" max="1" step="0.01"><output></output></label>
+      <label>Reverb <input type="range" id="reverb" min="0" max="1" step="0.01"><output></output></label>
+      <label>Room size (s) <input type="range" id="room" min="0.3" max="9" step="0.05"><output></output></label>
+      <label>Volume <input type="range" id="volume" min="0" max="1.5" step="0.01"><output></output></label>
+      <label>Audio quality <select id="audioQ"><option value="4">High — 4× oversampling</option><option value="2">Light — 2× (phones, older machines)</option></select></label>
+      <p class="info">If you hear dropouts or crackle when playing big chords, switch to Light — it halves the audio CPU.</p>
+    </section>
+
+    <section class="sec" data-tab="view">
+      <h2>View</h2>
+      <label>Palette <select id="palette">
+        <option value="ember">Ember</option><option value="abyss">Abyss</option><option value="orchid">Orchid</option><option value="verdigris">Verdigris</option><option value="aurora">Aurora</option><option value="ink">Ink</option>
+      </select></label>
+      <label>Gamma <input type="range" id="gamma" min="1" max="6" step="0.05"><output></output></label>
+      <label>Brightness <input type="range" id="bright" min="0.2" max="4" step="0.01"><output></output></label>
+      <label>Vibrancy <input type="range" id="vib" min="0" max="1" step="0.01"><output></output></label>
+      <label>Glow <input type="range" id="glow" min="0" max="1.5" step="0.01"><output></output></label>
+      <label>Quality <select id="quality"><option value="0">Fast</option><option value="1">Balanced</option><option value="2">Fine</option></select></label>
+      <label class="check"><input type="checkbox" id="showTri"> Show transform triangles in Edit</label>
+      <label class="check"><input type="checkbox" id="showOrbits"> Show voice orbits</label>
+      <label>Orbit glow <input type="range" id="orbitGlow" min="0" max="2" step="0.01"><output></output></label>
+      <p class="info">The glowing loops are the actual audio: each voice's point ringing around one transform's fixed point, then jumping to the next.</p>
+    </section>
+
+    <section class="sec" data-tab="record">
+      <h2>Record</h2>
+      <label>Format <select id="recFormat">
+        <option value="webm">Video — WebM</option><option value="mp4">Video — MP4</option><option value="wav">Audio — WAV</option>
+      </select></label>
+      <p class="info" id="recInfo"></p>
+      <div class="btnrow"><button id="recBtn2" class="rec">● Start recording</button></div>
+      <h3>Patches</h3>
+      <div class="btnrow"><button id="savePatch">Save patch</button><button id="loadPatch">Load patch</button><button id="resetAll">Reset</button></div>
+      <input type="file" id="patchFile" accept=".json,application/json" hidden>
+      <p class="info">A patch stores the flame, the throat and every setting. Video records the flame and the orbits with the sound.</p>
+    </section>
+  </aside>
+</main>
+<script type="module" src="main.js?v=1.1.0"></script>
+</body>
+</html>
