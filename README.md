@@ -110,7 +110,7 @@ The test file covers:
 - every preset of every engine is finite, loudness-matched and below clipping; CPU per engine
 
 ## Changelog
-- **1.2.0**: **Reset all** button in the top bar. Better flames: supersampling, robust density normalisation, density-estimation smoothing, highlight power, relief lighting, symmetry, two new palettes. Better video export: true export resolutions with an on-canvas frame guide, 30/60 fps, bitrate presets, auto-stop, the codec actually used shown in the Record tab, WebM duration fixed, PNG stills.
+- **1.2.0**: **Reset all** button in the top bar. Better flames: supersampling, robust density normalisation, density-estimation smoothing, highlight power, relief lighting, symmetry, two new palettes. Better video export: true export resolutions with an on-canvas frame guide, 30/60 fps, bitrate presets, auto-stop, the codec actually used shown in the Record tab, WebM duration fixed, PNG stills. GoatCounter analytics snippet (privacy-friendly, no cookies).
 - **1.1.1**: added the "Created with help from Claude AI" credit to the app and README.
 - **1.1.0**: three new engines (Bell, Orbit, Cloud) with 17 new presets; the Voice presets now carry their own envelopes, breath, address and vibrato, so they differ from each other too. The Throat panel relabels per engine; Cloud draws grain sparks.
 - **1.0.1**: crackle fix. Off-harmonic noise on steady notes dropped from about −20 dB to −67 to −84 dB:
