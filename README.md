@@ -1,8 +1,8 @@
 # Phlox
 
-**The flame voice.** Version 1.2.1
+**The flame voice.** Version 1.3.0
 
-Phlox (Greek φλόξ, "flame") is an instrument played by a flame fractal. It has four engines, each turning the same IFS transforms into a different kind of sound:
+Phlox (Greek φλόξ, "flame") is an instrument played by a flame fractal. It has seven engines, each turning the same IFS transforms into a different kind of sound:
 
 | Engine | What it is | Transform → sound |
 |---|---|---|
@@ -10,8 +10,11 @@ Phlox (Greek φλόξ, "flame") is an instrument played by a flame fractal. It h
 | **Bell** | Struck / bowed body | each transform is an inharmonic partial ringing in parallel: rotation sets the ratio, size the ring time, position how hard it is hit. Exciters: strike, double strike, roll, bow (singing bowl), scrape |
 | **Orbit** | Wavetable synth | the flame's periodic orbit under an address word, variations included, is traced as an outline; one trip round it is one cycle. Band-limited mip tables, unison, Edge (fractal jaggedness), brightness filter |
 | **Cloud** | Granular | the chaos game runs live; each point it lands on spawns a grain. Height on the fractal is pitch (harmonics / pentatonic / free / octaves / fifths), left/right is pan, and the grains show as sparks |
+| **String** | Waveguide string | one period of the flame's orbit outline is the pluck shape, its x and y the string's two polarisations; every transform is an allpass dispersion stage in the loop (rotation → stiffness / inharmonicity). Exciters: pluck, pick, hammer, bow, feedback (e-bow). The vibrating string is drawn on the flame |
+| **Pulse** | Rhythm | a step clock (tempo, swing) drives the chaos game; each transform is a tuned drum: rotation sets its pitch, size its decay, position its pan and accent, height its noise (snare / hat). Rhythms: chaos dice, Euclidean, Thue–Morse word, Fibonacci word, ratchet. Held notes share one clock |
+| **Scan** | Spectral scanner | the flame's density picture is read like a spectrogram: a line sweeps across it and the brightness bottom to top sets each partial's loudness (harmonics / odd / stretched / pentatonic chord / half harmonics). The left and right ears read either side of the line, which is drawn on the flame |
 
-The Throat panel relabels itself for each engine (Throat / Strike / Wave / Grains). The play surface's vertical axis is the throat (Voice), mallet hardness (Bell), brightness (Orbit) or density (Cloud).
+The Throat panel relabels itself for each engine (Throat / Strike / Wave / Grains / String / Rhythm / Scan). The play surface's vertical axis is the throat (Voice), mallet hardness (Bell), brightness (Orbit, String, Scan), density (Cloud) or busyness (Pulse).
 
 ### The Voice engine
 
@@ -38,11 +41,14 @@ The glowing loops drawn over the flame are the actual audio: each voice's point 
 - **MIDI**: notes with velocity, pitch bend ±2, CC1 breath, CC74 throat, CC64 hold.
 
 ## Panels
-- **Voice**: engine selector and 29 presets:
+- **Voice**: engine selector and 44 presets:
   - Voice ×12: Sierpiński choir, Spiral reed, Barnsley fern, Twin dragon, Golden angle, Swirl growl, Spherical bell, Julia breath, Heart drone, Disc vox, Handkerchief, Pure formant
   - Bell ×6: Temple bowl, Glass marimba, Gamelan gong, Fractal chimes, Iron plate, Bowed dragon
   - Orbit ×6: Sierpiński saw, Fern string, Dragon digital, Julia organ, Swirl pad, Golden blocks
   - Cloud ×5: Golden shimmer, Fern rain, Dragon swarm, Octave stars, Fifths drift
+  - String ×5: Sierpiński harp, Fern koto, Dragon piano, Golden cello, Julia e-bow
+  - Pulse ×5: Sierpiński tabla, Euclid fern, Dragon machine, Golden gamelan, Swirl ratchet
+  - Scan ×5: Sierpiński organ, Fern spectrum, Dragon glass, Golden chords, Heart hollow
 
   Each preset sets its engine's controls, not just the flame. Also morph toward any preset, *Wander* (an LFO that slowly turns the transforms, so the vowel and the flame drift), Randomize and Mutate.
 - **Transforms**: up to 8. Per transform: weight, rotation (shows its formant in Hz), scale X/Y, shear, move, colour, linear amount, and two variations with amounts, from 22 flam3-style variations.
@@ -73,6 +79,7 @@ The glowing loops drawn over the flame are the actual audio: each voice's point 
 
   Because M is a similarity of a scaled rotation, its fractional powers are exact, so every switch to the next transform lands at its exact sub-sample time with no timing jitter. Variations act as a geometric waveshaper on the linear resonator's path, with continuous per-transform weights so they never jump. polar, heart and disc are tapered at their atan2 cut in the audio path; julia follows its square-root branch continuously. The output is the pre-emphasised position of the voice, which is continuous with no steps. Voices run oversampled (4× or 2×) and a Kaiser FIR decimates them. Loudness is normalised per patch from an offline render.
 - `engine/engines.js`: the Bell (parallel damped rotators per transform, with exciters), Orbit (orbit outline → DFT → band-limited mip tables → cubic playback + one-pole brightness) and Cloud (live chaos game → recursive-oscillator grains) engines. It also holds the shared offline render and loudness measurement.
+- `engine/engines-more.js`: String (dual-polarisation waveguide, one allpass per transform, tuned by exact phase delay, Catmull–Rom fractional delay; sustained exciters are regenerative with level control, so they are stable at every pitch), Pulse (shared step clock → rhythm generator → pitch-dropping sine + SVF noise drums) and Scan (chaos-game density grid → swept column → recursive-oscillator partials; the picture is analysed a slice per audio block, so a moving flame never stalls the audio).
 - `engine/phlox-worklet.js`: 8-voice AudioWorklet. Voice runs oversampled with FIR decimation; Bell, Orbit and Cloud are band-limited by construction and run at the base rate. Also: voice stealing, + FIR decimation, voice stealing, DC blocker, stereo width, drive, and a peak limiter that never hard-clips. Live patch edits are smoothed, so dragging triangles doesn't click. It also sends orbit trails to the UI.
 - `engine/render-worker.js`: progressive chaos-game renderer that builds a log-density histogram with flame colouring in a module worker.
 - `engine/render-worker.js`: the renderer, in a module worker.
@@ -92,6 +99,7 @@ No external dependencies; WebGL1, AudioWorklet, ES modules. Serve it over http(s
 ## Tests
 ```
 node tests/test-dsp.mjs
+node tests/test-engines.mjs                    # String / Pulse / Scan presets at three pitches
 node tests/test-webm.mjs some-recording.webm   # needs ffprobe
 ```
 The test file covers:
@@ -110,6 +118,7 @@ The test file covers:
 - every preset of every engine is finite, loudness-matched and below clipping; CPU per engine
 
 ## Changelog
+- **1.3.0**: three new engines with 15 presets. **String**: a waveguide whose pluck shape is the flame's outline and whose stiffness comes from the transforms' rotations; pluck, pick, hammer, bow and e-bow. **Pulse**: a rhythm engine; the chaos game plays tuned drums on a shared step clock, with tempo, swing and five rhythm generators. **Scan**: reads the flame picture like a spectrogram. Fixed: the preset grid showed every engine's presets instead of only the current engine's.
 - **1.2.1**: Wander is fast again. It now runs on its own 30 Hz clock instead of the screen's frame rate, and trails fade by elapsed time, so the flame keeps moving at full speed even when rendering is slow. Faster display shader: empty background skips the smoothing and glow work, and glow tone-maps two averaged rings instead of 16 samples (about 2× the frame rate with default settings).
 - **1.2.0**: **Reset all** button in the top bar. Better flames: supersampling, robust density normalisation, density-estimation smoothing, highlight power, relief lighting, symmetry, two new palettes. Better video export: true export resolutions with an on-canvas frame guide, 30/60 fps, bitrate presets, auto-stop, the codec actually used shown in the Record tab, WebM duration fixed, PNG stills. GoatCounter analytics snippet (privacy-friendly, no cookies).
 - **1.1.1**: added the "Created with help from Claude AI" credit to the app and README.

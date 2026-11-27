@@ -6,7 +6,7 @@ import { AudioEngine } from './engine/audio.js';
 import { Recorder, pickMime, download, savePng, describeMime } from './engine/recorder.js';
 import { setupTabs } from './engine/tabs.js';
 
-const VERSION = '1.2.1';
+const VERSION = '1.3.0';
 const $ = (id) => document.getElementById(id);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const NOTE_NAMES = ['C', 'C♯', 'D', 'E♭', 'E', 'F', 'F♯', 'G', 'A♭', 'A', 'B♭', 'B'];
@@ -29,6 +29,9 @@ const ENGINE_DEFAULTS = {
   bell: { throat: 2400, ring: 0.6, body: 0.5, breath: 0.1, address: 0, bloom: 0.2, attack: 0.001, decay: 1, sustain: 1, release: 1.2, vibDepth: 0, detail: 32 },
   orbit: { throat: 3000, ring: 0.35, body: 0.5, breath: 0, address: 1, bloom: 0.3, attack: 0.02, decay: 0.6, sustain: 0.8, release: 0.5, vibDepth: 10, detail: 32 },
   cloud: { throat: 2400, ring: 0.4, body: 0.5, breath: 0.05, address: 0, bloom: 0.5, attack: 0.3, decay: 1, sustain: 0.9, release: 1.5, vibDepth: 0, detail: 32 },
+  string: { throat: 1200, ring: 0.5, body: 0.6, breath: 0.1, address: 0, bloom: 0.35, attack: 0.001, decay: 1, sustain: 1, release: 0.4, vibDepth: 0, detail: 32 },
+  pulse: { throat: 2400, ring: 0.35, body: 0.5, breath: 0.2, address: 0, bloom: 0.1, attack: 0.001, decay: 1, sustain: 1, release: 0.3, vibDepth: 0, detail: 32 },
+  scan: { throat: 3000, ring: 0.3, body: 0.5, breath: 0.1, address: 0, bloom: 0.3, attack: 0.25, decay: 1, sustain: 1, release: 1.2, vibDepth: 6, detail: 24 },
 };
 // What the shared controls mean in each engine.
 const ENGINE_UI = {
@@ -51,6 +54,21 @@ const ENGINE_UI = {
     head: 'Grains', info: 'Granular — the chaos game runs live and every point it lands on spawns a grain: height on the fractal is pitch, left/right is pan. Higher on the play surface = denser.',
     throat: 'Pitch spread', ring: 'Grain length', body: 'Density', breath: 'Noise grains', address: 'Tuning', bloom: 'Grain shape (soft → plucked)',
     addr: ['Harmonics of the note', 'Pentatonic', 'Free (unquantized)', 'Octaves', 'Stacked fifths'],
+  },
+  string: {
+    head: 'String', info: "Waveguide string — one period of the flame's orbit outline is the pluck shape (its x and y are the string's two polarisations), and every transform is a dispersion stage in the loop: rotation sets how stiff (inharmonic) the string is. Higher on the play surface = brighter pluck, faster bow.",
+    throat: 'Stiffness (inharmonicity)', ring: 'Sustain', body: 'Brightness (felt → steel)', breath: 'Pick / bow noise', address: 'Exciter', bloom: 'Beating (polarisations couple)',
+    addr: ['Pluck — the fractal outline', 'Pick — sharp, all edges', 'Hammer — felt', 'Bow — friction', 'Feedback — e-bow'],
+  },
+  pulse: {
+    head: 'Rhythm', info: 'Rhythm — a step clock drives the chaos game: each step a transform is picked and struck like a tuned drum (rotation sets its pitch, size how long it rings, position the pan and accent). Higher on the play surface = busier. Held notes share one clock.',
+    throat: 'Tempo (BPM)', ring: 'Decay', body: 'Pitch drop (tom → kick)', breath: 'Noise (snare / hat)', address: 'Rhythm', bloom: 'Swing',
+    addr: ['Chaos game — weighted dice', 'Euclidean — weights spread evenly', 'Thue–Morse word', 'Fibonacci word', 'Ratchet — small transforms roll'],
+  },
+  scan: {
+    head: 'Scan', info: "Spectral scanner — the flame's picture is read like a spectrogram: a line sweeps across it and the brightness from bottom to top sets the loudness of each partial. The left and right ears read just either side of the line. Higher on the play surface = brighter.",
+    throat: 'Brightness (Hz)', ring: 'Sweep rate', body: 'Contrast (only the bright parts)', breath: 'Shimmer', address: 'Partials', bloom: 'Brightness follows envelope',
+    addr: ['Harmonics', 'Odd harmonics (hollow)', 'Stretched (bell)', 'Pentatonic chord', 'Half harmonics'],
   },
 };
 
@@ -390,6 +408,9 @@ const ENGINE_FMT = {
   bell: { throat: v => (v / 1200).toFixed(2) + ' oct', ring: v => (0.15 + 9 * v * v).toFixed(2) + ' s', bloom: v => (v * 7).toFixed(1) + '%' },
   orbit: { ring: v => (1 + Math.round(v * 3)) + '× · ' + (v * 12 * 1.73).toFixed(0) + '¢', body: v => (1 + 8 * v).toFixed(1) + '×' },
   cloud: { throat: v => (v / 1200).toFixed(2) + ' oct', ring: v => ((0.006 + v * v * 0.45) * 1000).toFixed(0) + ' ms', body: v => (4 + v * v * 300).toFixed(0) + '/s' },
+  string: { throat: v => ((v - 300) / 57).toFixed(0) + '%', ring: v => (0.2 + 14 * v * v).toFixed(1) + ' s', bloom: v => v.toFixed(2) },
+  pulse: { throat: v => Math.max(30, Math.min(300, v / 20)).toFixed(0) + ' BPM', ring: v => ((0.05 + 1.3 * v * v) * 1000).toFixed(0) + ' ms', bloom: v => (v * 50).toFixed(0) + '%' },
+  scan: { ring: v => (0.02 + 0.55 * v * v).toFixed(2) + ' Hz' },
 };
 function setOut(input) {
   const o = input.parentElement.querySelector('output');
@@ -401,7 +422,8 @@ function applyEngineUI() {
   for (const k of ['throat', 'ring', 'body', 'breath', 'address', 'bloom']) $('lt_' + k).textContent = U[k];
   $('address').innerHTML = U.addr.map((t, i) => `<option value="${i}">${t}</option>`).join('');
   $('address').value = String(S.address);
-  $('detailRow').hidden = S.engine !== 'orbit';
+  $('detailRow').hidden = S.engine !== 'orbit' && S.engine !== 'scan';
+  $('lt_detail').textContent = S.engine === 'scan' ? 'Partials (rows read from the flame)' : 'Detail (orbit points per cycle)';
   $('throatHead').textContent = U.head;
   $('engineInfo').textContent = U.info;
   for (const b of $('engineSeg').children) b.classList.toggle('on', b.dataset.engine === S.engine);
@@ -469,6 +491,9 @@ function syncXf() {
   const what = S.engine === 'voice' ? `formant ≈ ${formantHz(x.rot, S.throat).toFixed(0)} Hz`
     : S.engine === 'bell' ? `partial ×${Math.pow(2, Math.abs(x.rot) / 180 * S.throat / 1200).toFixed(3)} of the note`
     : S.engine === 'orbit' ? `${(x.w * 100 / Math.max(1e-6, S.xf.reduce((a, t) => a + t.w, 0))).toFixed(0)}% of the orbit word`
+    : S.engine === 'string' ? `dispersion ${(0.9 * Math.max(0, Math.min(1, (S.throat - 300) / 5700)) * (0.2 + 0.8 * Math.abs(x.rot) / 180)).toFixed(2)}`
+    : S.engine === 'pulse' ? `drum ×${Math.pow(2, Math.abs(x.rot) / 180 * 2).toFixed(3)} of the note · ${(x.w * 100 / Math.max(1e-6, S.xf.reduce((a, t) => a + t.w, 0))).toFixed(0)}% of the hits`
+    : S.engine === 'scan' ? `${(x.w * 100 / Math.max(1e-6, S.xf.reduce((a, t) => a + t.w, 0))).toFixed(0)}% of the picture`
     : `${(x.w * 100 / Math.max(1e-6, S.xf.reduce((a, t) => a + t.w, 0))).toFixed(0)}% of the grains`;
   $('xInfo').textContent = `Transform ${S.sel + 1}: ${what} · contraction ${Math.sqrt(det).toFixed(2)}${S.morph > 0 ? ' · editing bakes the current morph' : ''}`;
 }
@@ -743,7 +768,7 @@ function sendSym() { const y = SYMS[S.sym] || SYMS.none; worker.postMessage({ ty
 new ResizeObserver(() => resize()).observe($('view'));
 
 const coarse = window.matchMedia('(pointer: coarse)');
-function axisName() { return { voice: 'throat', bell: 'mallet hardness', orbit: 'brightness', cloud: 'density' }[S.engine]; }
+function axisName() { return { voice: 'throat', bell: 'mallet hardness', orbit: 'brightness', cloud: 'density', string: 'brightness', pulse: 'busyness', scan: 'brightness' }[S.engine]; }
 function updateHint() {
   const t = coarse.matches;
   $('hint').textContent = S.mode === 'play'
@@ -767,7 +792,7 @@ function drawOrbits() {
   c.globalCompositeOperation = 'lighter';
   if (!S.showOrbits) return;
   c.lineCap = 'round'; c.lineJoin = 'round';
-  if (S.engine === 'cloud') { // grains: sparks where the chaos game landed
+  if (S.engine === 'cloud' || S.engine === 'pulse') { // grains / drum hits: sparks where the chaos game landed
     for (const v of trails) {
       const pts = v.pts, a = Math.min(1, v.env * 1.3) * S.orbitGlow;
       for (let i = 0; i < pts.length; i += 2) {
@@ -786,7 +811,7 @@ function drawOrbits() {
     const col = lutColor(lut, 0.55 + 0.45 * ((v.k * 0.37) % 1), 1);
     c.strokeStyle = col;
     // orbit wavetables retrace the same loop every cycle: draw them finer so the loop stays readable
-    const layers = S.engine === 'orbit' ? [[3, 0.03], [1.2, 0.08], [0.7, 0.25]] : [[6, 0.08], [2.2, 0.35], [1, 0.9]];
+    const layers = S.engine === 'orbit' || S.engine === 'string' || S.engine === 'scan' ? [[3, 0.03], [1.2, 0.08], [0.7, 0.25]] : [[6, 0.08], [2.2, 0.35], [1, 0.9]];
     for (const [lw, al] of layers) {
       c.globalAlpha = Math.min(1, al * a); c.lineWidth = lw * dpr;
       c.beginPath();
