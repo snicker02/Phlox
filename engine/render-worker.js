@@ -1,4 +1,4 @@
-// Phlox v1.2.0 — progressive flame renderer (chaos game → supersampled log-density histogram),
+// Phlox v1.2.1 — progressive flame renderer (chaos game → supersampled log-density histogram),
 // off the main thread.
 //  · supersampling: the histogram is ss× the output in each axis and box-filtered down (anti-aliasing)
 //  · robust density normalisation: log-density relative to a high percentile of the occupied bins
@@ -17,6 +17,9 @@ let px = 0.1, py = 0.1, pc = 0.5, jbit = 0;
 let lastPost = 0, running = false, dirtyFit = false, total = 0;
 let sym = { n: 1, mirror: false, cx: 0, cy: 0 }, symCos = new Float64Array(1).fill(1), symSin = new Float64Array(1);
 let fps = 30;
+// lazy fading: instead of multiplying every bin on each update, new samples are added with a growing
+// weight wAdd; densities are divided by it at tonemap time (O(1) per update instead of O(bins))
+let wAdd = 1, lastXfT = 0;
 const acc = [0, 0];
 let seed = 12345;
 const rnd = () => { seed ^= seed << 13; seed >>>= 0; seed ^= seed >> 17; seed ^= seed << 5; seed >>>= 0; return seed / 4294967296; };
@@ -28,9 +31,18 @@ function alloc(w, h, ss) {
   while (SS > 1 && W * H * SS * SS > 5e6) SS--;
   HW = W * SS; HH = H * SS;
   cnt = new Float32Array(HW * HH); cr = new Float32Array(HW * HH); cg = new Float32Array(HW * HH); cb = new Float32Array(HW * HH);
-  total = 0;
+  total = 0; wAdd = 1;
 }
-function decay(k) { if (!cnt) return; for (let i = 0; i < cnt.length; i++) { cnt[i] *= k; cr[i] *= k; cg[i] *= k; cb[i] *= k; } total *= k; }
+function decay(k) {
+  if (!cnt) return;
+  if (k <= 0) { cnt.fill(0); cr.fill(0); cg.fill(0); cb.fill(0); wAdd = 1; total = 0; return; }
+  wAdd /= k; total *= k;
+  if (wAdd > 1e12) { // renormalise long before float32 runs out of range
+    const s = 1 / wAdd;
+    for (let i = 0; i < cnt.length; i++) { cnt[i] *= s; cr[i] *= s; cg[i] *= s; cb[i] *= s; }
+    wAdd = 1;
+  }
+}
 
 function setXf(p) {
   P = p; nx = p.length / XF_STRIDE;
@@ -73,7 +85,7 @@ function iterate(count) {
     const ix = fx | 0, iy = fy | 0;
     if (fx < 0 || fy < 0 || ix >= HW || iy >= HH) continue;
     const o = iy * HW + ix, ci = Math.min(255, Math.max(0, (pc * 255) | 0)) * 3;
-    cnt[o] += 1; cr[o] += lut[ci]; cg[o] += lut[ci + 1]; cb[o] += lut[ci + 2];
+    cnt[o] += wAdd; cr[o] += lut[ci] * wAdd; cg[o] += lut[ci + 1] * wAdd; cb[o] += lut[ci + 2] * wAdd;
   }
   total += count;
 }
@@ -127,7 +139,7 @@ function tonemap() {
       for (let i = 0; i < SS; i++, o++) { c += cnt[o]; r += cr[o]; g += cg[o]; b += cb[o]; }
     }
     const p = y * W + x;
-    dens[p] = c / ss2; R[p] = r; G[p] = g; B[p] = b;
+    dens[p] = c / (ss2 * wAdd); R[p] = r; G[p] = g; B[p] = b;
     if (c > 0) occupied++;
   }
   // 2. reference density = 99.5th percentile of occupied pixels (sampled), not the maximum
@@ -143,7 +155,7 @@ function tonemap() {
   for (let p = 0, o = 0; p < n; p++, o += 4) {
     const d = dens[p];
     if (d <= 0) { out[o] = 0; out[o + 1] = 0; out[o + 2] = 0; out[o + 3] = 0; continue; }
-    const ic = 1 / (d * ss2);
+    const ic = 1 / (d * ss2 * wAdd);
     out[o] = R[p] * ic; out[o + 1] = G[p] * ic; out[o + 2] = B[p] * ic;
     // log density relative to the reference, 1.25× headroom for highlights, √-encoded for 8-bit precision
     const a = Math.min(1.25, Math.log(1 + d * 4) * ln) / 1.25;
@@ -167,7 +179,11 @@ function loop() {
 self.onmessage = (e) => {
   const d = e.data;
   if (d.type === 'size') { alloc(d.W, d.H, d.ss); }
-  else if (d.type === 'xf') { setXf(d.P); decay(d.keep ?? 0.2); if (d.fit) dirtyFit = true; for (let k = 0; k < 30; k++) step(); if ((sym.n > 1 || sym.mirror) && !d.fit) centre(); }
+  else if (d.type === 'xf') {
+    // timed updates (Wander) fade by elapsed time, so trails last the same at any update rate
+    const now = performance.now(), dt = lastXfT ? now - lastXfT : 33.3; lastXfT = now;
+    const keep = d.keep ?? 0.2;
+    setXf(d.P); decay(d.timed ? Math.pow(keep, Math.min(6, Math.max(0.2, dt / 33.3))) : keep); if (d.fit) dirtyFit = true; for (let k = 0; k < 30; k++) step(); if ((sym.n > 1 || sym.mirror) && !d.fit) centre(); }
   else if (d.type === 'cam') { cam = d.cam; decay(0); }
   else if (d.type === 'palette') { lut = d.lut; decay(0); }
   else if (d.type === 'quality') { budgetPts = d.pts; if (d.fps) fps = d.fps; }

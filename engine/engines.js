@@ -1,4 +1,4 @@
-// Phlox v1.2.0 — the four sound engines, all driven by the same flame.
+// Phlox v1.2.1 — the four sound engines, all driven by the same flame.
 //   voice : formant voice (flame.js renderVoice) — each transform a vocal-tract resonance
 //   bell  : struck/bowed modal body — each transform an inharmonic partial ringing in parallel
 //   orbit : wavetable — the flame's periodic orbit under an address word, played band-limited

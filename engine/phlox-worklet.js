@@ -1,4 +1,4 @@
-// Phlox v1.2.0 — polyphonic flame-voice AudioWorklet (four engines).
+// Phlox v1.2.1 — polyphonic flame-voice AudioWorklet (four engines).
 // Voices run 4× (High) or 2× (Light) oversampled (192 kHz at 48 kHz) and the mix is decimated with a Kaiser FIR,
 // so the rings start without aliasing. A smooth peak limiter keeps chords from clipping.
 import { preparePatch, makeVoice, Decimator, OS } from './flame.js';
