@@ -1,6 +1,6 @@
 # Phlox
 
-**The flame voice.** Version 1.2.0
+**The flame voice.** Version 1.2.1
 
 Phlox (Greek φλόξ, "flame") is an instrument played by a flame fractal. It has four engines, each turning the same IFS transforms into a different kind of sound:
 
@@ -110,6 +110,7 @@ The test file covers:
 - every preset of every engine is finite, loudness-matched and below clipping; CPU per engine
 
 ## Changelog
+- **1.2.1**: Wander is fast again. It now runs on its own 30 Hz clock instead of the screen's frame rate, and trails fade by elapsed time, so the flame keeps moving at full speed even when rendering is slow. Faster display shader: empty background skips the smoothing and glow work, and glow tone-maps two averaged rings instead of 16 samples (about 2× the frame rate with default settings).
 - **1.2.0**: **Reset all** button in the top bar. Better flames: supersampling, robust density normalisation, density-estimation smoothing, highlight power, relief lighting, symmetry, two new palettes. Better video export: true export resolutions with an on-canvas frame guide, 30/60 fps, bitrate presets, auto-stop, the codec actually used shown in the Record tab, WebM duration fixed, PNG stills. GoatCounter analytics snippet (privacy-friendly, no cookies).
 - **1.1.1**: added the "Created with help from Claude AI" credit to the app and README.
 - **1.1.0**: three new engines (Bell, Orbit, Cloud) with 17 new presets; the Voice presets now carry their own envelopes, breath, address and vibrato, so they differ from each other too. The Throat panel relabels per engine; Cloud draws grain sparks.

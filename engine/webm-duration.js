@@ -1,4 +1,4 @@
-// Phlox v1.2.0 — give MediaRecorder WebM files a duration.
+// Phlox v1.2.1 — give MediaRecorder WebM files a duration.
 // Chrome's MediaRecorder writes WebM with no Duration in the Segment Info, so players show no
 // length and often can't seek. This inserts (or fixes) the EBML Duration element. Only the first
 // 64 KB are parsed; the rest of the file is passed through untouched (Blob slices, no big copies).

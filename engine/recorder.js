@@ -1,4 +1,4 @@
-// Phlox v1.2.0 — recording: video (WebM or MP4 via MediaRecorder) from a dedicated export canvas
+// Phlox v1.2.1 — recording: video (WebM or MP4 via MediaRecorder) from a dedicated export canvas
 // at the chosen resolution, lossless WAV via the tap worklet, and PNG stills.
 import { fixWebmDuration } from './webm-duration.js';
 

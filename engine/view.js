@@ -1,4 +1,4 @@
-// Phlox v1.2.0 — WebGL1 display of the flame histogram.
+// Phlox v1.2.1 — WebGL1 display of the flame histogram.
 // Texture: RGB = average palette colour, A = √(log-density / 1.25) from the render worker.
 // Shader: gamma with a linear threshold (faint areas don't turn to noise), vibrancy,
 // density-estimation smoothing (sparse pixels average over a wider neighbourhood, like flam3's
@@ -44,20 +44,29 @@ vec3 tone(vec4 pm) {
 void main() {
   vec2 uv = vec2(vUv.x, 1.0 - vUv.y);
   vec4 c0 = smp(uv);
+  // empty background far from the flame: nothing to smooth or glow — skip the expensive work.
+  if (c0.a <= 0.0 && uDE <= 0.0 && uGlow <= 0.0) { gl_FragColor = vec4(uBg, 1.0); return; }
+  // 8 probes cover the glow and smoothing reach (≤ 6 texels).
+  if (c0.a <= 0.0 && (uDE > 0.0 || uGlow > 0.0)) {
+    float probe = 0.0;
+    for (int i = 0; i < 8; i++) {
+      float a = float(i) * 0.785398 + 0.3927;
+      vec2 o = vec2(cos(a), sin(a)) * uTexel;
+      probe += texture2D(uTex, uv + o * 2.5).a + texture2D(uTex, uv + o * 5.5).a;
+      if (probe > 0.0) break;
+    }
+    if (probe <= 0.0) { gl_FragColor = vec4(uBg, 1.0); return; }
+  }
   if (uDE > 0.0) {
     float sp = 1.0 - clamp(sqrt(c0.a), 0.0, 1.0);               // 1 = sparse, 0 = dense
     float sp2 = sp * sp;                                        // only genuinely sparse pixels get the wide kernel
     float r = 0.6 + uDE * 2.6 * sp2;                            // kernel radius in texels
     vec4 s = c0 * 2.0;
-    float ws = 2.0;
     for (int i = 0; i < 8; i++) {
       float a = float(i) * 0.785398 + 0.3927;
-      vec2 o = vec2(cos(a), sin(a)) * uTexel;
-      s += smp(uv + o * r);
-      s += smp(uv + o * r * 0.5) * 1.5;
-      ws += 2.5;
+      s += smp(uv + vec2(cos(a), sin(a)) * uTexel * r);
     }
-    c0 = mix(c0, s / ws, clamp(uDE * (0.05 + 1.1 * sp2), 0.0, 1.0));
+    c0 = mix(c0, s / 10.0, clamp(uDE * (0.05 + 1.1 * sp2), 0.0, 1.0));
   }
   vec3 col = tone(c0);
   if (uRelief > 0.0) {
@@ -81,14 +90,15 @@ void main() {
     col = col * mix(1.0, 0.3 + 0.95 * dif, uRelief) + spec * uRelief * 0.45 * min(lum * 2.0, 1.0);
   }
   if (uGlow > 0.0) {
-    vec3 g = vec3(0.0);
+    // two rings of raw (premultiplied) samples, tone-mapped once per ring — not once per sample
+    vec4 g1 = vec4(0.0), g2 = vec4(0.0);
     for (int i = 0; i < 8; i++) {
       float a = float(i) * 0.785398;
-      vec2 o = vec2(cos(a), sin(a));
-      g += tone(smp(uv + o * uTexel * 3.0));
-      g += tone(smp(uv + o * uTexel * 7.0)) * 0.6;
+      vec2 o = vec2(cos(a), sin(a)) * uTexel;
+      g1 += smp(uv + o * 3.0);
+      g2 += smp(uv + o * 7.0);
     }
-    col += g * (uGlow / 13.0);
+    col += (tone(g1 / 8.0) * 8.0 + tone(g2 / 8.0) * 4.8) * (uGlow / 13.0);
   }
   float alpha = clamp(max(col.r, max(col.g, col.b)), 0.0, 1.0);
   vec3 outc = uBg * (1.0 - alpha) + col;

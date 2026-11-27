@@ -6,7 +6,7 @@ import { AudioEngine } from './engine/audio.js';
 import { Recorder, pickMime, download, savePng, describeMime } from './engine/recorder.js';
 import { setupTabs } from './engine/tabs.js';
 
-const VERSION = '1.2.0';
+const VERSION = '1.2.1';
 const $ = (id) => document.getElementById(id);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const NOTE_NAMES = ['C', 'C♯', 'D', 'E♭', 'E', 'F', 'F♯', 'G', 'A♭', 'A', 'B♭', 'B'];
@@ -167,7 +167,7 @@ function pushPatch(now, force) {
   const P = compile(effXf);
   if (force || now - lastMeasureT > 120 || !measured) { measured = measurePatch(P, globals(), S.ring); lastMeasureT = now; }
   audio.post({ type: 'patch', P, ring: S.ring, cx: measured.cx, cy: measured.cy, norm: measured.norm, jump: !!force });
-  worker.postMessage({ type: 'xf', P, keep: S.wander > 0 ? 0.6 : 0.15, fit: fitNext });
+  worker.postMessage({ type: 'xf', P, keep: S.wander > 0 ? 0.6 : 0.15, timed: S.wander > 0, fit: fitNext });
   fitNext = false;
   lastPatchT = now;
 }
@@ -838,10 +838,13 @@ function drawUI() {
 
 function drawOpts() { return { gamma: S.gamma, bright: S.bright, vib: S.vib, glow: S.glow, de: S.de, high: S.high, relief: S.relief, thresh: 0.015, bg: [0.024, 0.016, 0.04] }; }
 
+// Wander runs on its own 30 Hz clock, so the flame and the sound keep moving at full rate even
+// when the screen renders slowly (big windows, slower GPUs, recording at high resolution)
+setInterval(() => { if (S.wander > 0 && !patchDirty) pushPatch(performance.now(), !measured); }, 33);
+
 // ---------- frame loop ----------
 let frameN = 0;
 function frame(now) {
-  if (S.wander > 0) patchDirty = patchDirty || now - lastPatchT > 33;
   if (patchDirty) { patchDirty = false; pushPatch(now, !measured); }
   view.draw(drawOpts());
   drawOrbits();

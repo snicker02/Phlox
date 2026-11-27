@@ -1,4 +1,4 @@
-// Phlox v1.2.0 — shared flame math: variations, transforms, presets, and the voice DSP.
+// Phlox v1.2.1 — shared flame math: variations, transforms, presets, and the voice DSP.
 // Imported by the AudioWorklet, the render worker, the UI and the Node tests.
 //
 // The idea: iterating an affine map z ← A z + b at audio rate is a two-pole resonator
