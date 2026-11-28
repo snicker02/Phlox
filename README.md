@@ -135,6 +135,10 @@ The test file covers:
   - an Audio quality setting (High 4× / Light 2×)
 - **1.0.0**: first release.
 
+## License
+
+MIT — see [LICENSE](LICENSE).
+
 ---
 
 Created with help from Claude AI
